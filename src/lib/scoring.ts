@@ -277,6 +277,7 @@ export function analyseResults(
       multiCount,
       lowCount,
       needsReview: !sheet.isKey && (lowCount > 0 || multiCount > 0),
+      suggested: sheet.suggested,
     });
   }
 

@@ -157,6 +157,7 @@ export default function ScoreTable({
         <span className="legend-item blank"><i />blank</span>
         <span className="legend-item multi"><i />multi</span>
         <span className="legend-item key"><i />答案卷（不計入統計）</span>
+        <span className="legend-item suggested"><i />＊ 系統建議</span>
         <span className="legend-spacer" />
         <span>
           共 {total} 位計入統計 · 每題 1 分 · 點擊任何一行查看標記圖
@@ -191,6 +192,10 @@ export default function ScoreTable({
               const sheet = sheetById.get(student.id);
               const index = analysis.students.findIndex((s) => s.id === student.id);
               const needsReview = !student.isKey && (student.lowCount > 0 || student.multiCount > 0);
+              const suggested = student.suggested;
+              const suggestedAny = Boolean(
+                suggested?.className || suggested?.seatNo || suggested?.name,
+              );
               return (
                 <tr
                   key={student.id}
@@ -200,7 +205,8 @@ export default function ScoreTable({
                   <td className="idx-col sticky c1">{index + 1}</td>
                   <td className="class-col sticky c2">
                     <input
-                      className="table-input compact"
+                      className={`table-input compact ${suggested?.className ? 'suggested-input' : ''}`}
+                      title={suggested?.className ? '系統建議班別，請確認' : undefined}
                       value={student.className}
                       onChange={(event) =>
                         onEditSheet(student.id, { className: event.target.value })
@@ -212,7 +218,8 @@ export default function ScoreTable({
                   </td>
                   <td className="seat-col sticky c3">
                     <input
-                      className="table-input compact"
+                      className={`table-input compact ${suggested?.seatNo ? 'suggested-input' : ''}`}
+                      title={suggested?.seatNo ? '系統建議學號，請確認' : undefined}
                       value={student.seatNo}
                       onChange={(event) =>
                         onEditSheet(student.id, { seatNo: event.target.value })
@@ -225,7 +232,8 @@ export default function ScoreTable({
                   <td className="name-col sticky c4">
                     <div className="name-input-row">
                       <input
-                        className="table-input name"
+                        className={`table-input name ${suggested?.name ? 'suggested-input' : ''}`}
+                        title={suggested?.name ? '系統建議姓名，請確認' : undefined}
                         value={student.name}
                         onChange={(event) =>
                           onEditSheet(student.id, { name: event.target.value })
@@ -283,6 +291,8 @@ export default function ScoreTable({
                       <span className="status-chip review">
                         <span className="dot" /> 覆核
                       </span>
+                    ) : suggestedAny ? (
+                      <span className="status-chip suggested">＊ 系統建議</span>
                     ) : student.blankCount > 0 ? (
                       <span className="status-chip blank">有 blank</span>
                     ) : (

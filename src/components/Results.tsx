@@ -6,6 +6,7 @@ import {
   Download,
   Grid3X3,
   ListChecks,
+  Loader2,
   PencilLine,
   ScanLine,
   Settings2,
@@ -50,6 +51,10 @@ interface ResultsProps {
   onImportBackup: (file: File) => void;
   onToast: (message: string, kind?: ToastKind) => void;
   autoCount: number;
+  rosterStatus: 'loading' | 'ready' | 'error';
+  rosterCount: number;
+  rosterFromCache: boolean;
+  onRefreshRoster: () => void;
 }
 
 const TABS: { id: Tab; label: string; icon: typeof Table2 }[] = [
@@ -203,6 +208,10 @@ export default function Results({
   onImportBackup,
   onToast,
   autoCount,
+  rosterStatus,
+  rosterCount,
+  rosterFromCache,
+  onRefreshRoster,
 }: ResultsProps) {
   const failed = sheets.filter((s) => !s.detection?.ok).length;
   const invalidKeys = analysis.questions.filter((q) => !q.keyValid).length;
@@ -210,6 +219,11 @@ export default function Results({
     (s) => s.lowCount > 0 || s.multiCount > 0,
   ).length;
   const blankSheets = analysis.included.filter((s) => s.blankCount > 0).length;
+  const suggestedStudents = analysis.students.filter(
+    (s) =>
+      !s.isKey &&
+      (s.suggested?.className || s.suggested?.seatNo || s.suggested?.name),
+  ).length;
   const blankCells = analysis.included.reduce((sum, s) => sum + s.blankCount, 0);
   const reviewStudents = analysis.included.filter(
     (s) => s.lowCount > 0 || s.multiCount > 0 || s.blankCount > 0,
@@ -240,6 +254,32 @@ export default function Results({
           </p>
         </div>
         <div className="results-actions">
+          <button
+            className={`roster-pill ${rosterStatus}`}
+            onClick={onRefreshRoster}
+            disabled={rosterStatus === 'loading'}
+            title={
+              rosterStatus === 'ready'
+                ? rosterFromCache
+                  ? '使用本機快取的全校名單；按此更新'
+                  : '按此重新讀取全校名單'
+                : '自動讀取學校 Google Sheet 的全校名單'
+            }
+          >
+            {rosterStatus === 'loading' ? (
+              <Loader2 size={14} className="spin" />
+            ) : (
+              <Users size={14} />
+            )}
+            {rosterStatus === 'ready'
+              ? `全校名單 ${rosterCount}`
+              : rosterStatus === 'loading'
+                ? '名單載入中'
+                : '名單未載入 · 重試'}
+            {rosterStatus === 'ready' && rosterFromCache && (
+              <i className="cache-dot" aria-label="使用本機快取" />
+            )}
+          </button>
           <button className="btn ghost small" onClick={onOpenManager}>
             <ScanLine size={15} /> 管理答題紙
           </button>
@@ -284,6 +324,32 @@ export default function Results({
                     .map(([seat]) => seat)
                     .join('、')}）。`}
                 左上角的 Level / Class / Class No 若填得太淡或寫在格子上方，系統可能讀不到；可直接在成績表修改。
+              </span>
+            </div>
+            <button className="notice-action" onClick={() => onTabChange('scores')}>
+              查看 <ArrowRight size={14} />
+            </button>
+          </div>
+        )}
+        {rosterStatus === 'error' && (
+          <div className="notice warning">
+            <AlertTriangle size={17} />
+            <div>
+              <strong>未能載入全校名單</strong>
+              <span>姓名需手動輸入或使用批次命名；可重試讀取名單。</span>
+            </div>
+            <button className="notice-action" onClick={onRefreshRoster}>
+              重試 <ArrowRight size={14} />
+            </button>
+          </div>
+        )}
+        {suggestedStudents > 0 && (
+          <div className="notice warning">
+            <AlertTriangle size={17} />
+            <div>
+              <strong>{suggestedStudents} 位學生的班別／學號／姓名為系統建議</strong>
+              <span>
+                系統按上載順序及全校名單建議，相關欄位以黃色標示（＊）；請在成績表確認或修改。
               </span>
             </div>
             <button className="notice-action" onClick={() => onTabChange('scores')}>

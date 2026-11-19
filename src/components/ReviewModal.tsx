@@ -110,6 +110,10 @@ export default function ReviewModal({
   const lowCount = student?.lowCount ?? 0;
   const multiCount = student?.multiCount ?? 0;
   const blankCount = student?.blankCount ?? 0;
+  const suggested = sheet.suggested;
+  const hasSuggestion = Boolean(
+    suggested?.className || suggested?.seatNo || suggested?.name,
+  );
 
   if (!detection?.ok) {
     return (
@@ -237,10 +241,18 @@ export default function ReviewModal({
                   </span>
                 )}
               </div>
+              {hasSuggestion && (
+                <div className="suggested-banner">
+                  <AlertTriangle size={14} />
+                  <span>班別／學號／姓名有系統建議，請確認。</span>
+                </div>
+              )}
               <div className="student-fields">
                 <label>
                   <span>姓名</span>
                   <input
+                    className={suggested?.name ? 'suggested-input' : undefined}
+                    title={suggested?.name ? '系統建議姓名，請確認' : undefined}
                     value={sheet.name}
                     onChange={(event) => onMeta({ name: event.target.value })}
                     placeholder="輸入姓名"
@@ -250,6 +262,8 @@ export default function ReviewModal({
                   <label>
                     <span>班別</span>
                     <input
+                      className={suggested?.className ? 'suggested-input' : undefined}
+                      title={suggested?.className ? '系統建議班別，請確認' : undefined}
                       value={sheet.className}
                       onChange={(event) => onMeta({ className: event.target.value })}
                       placeholder="4A"
@@ -258,6 +272,8 @@ export default function ReviewModal({
                   <label>
                     <span>學號</span>
                     <input
+                      className={suggested?.seatNo ? 'suggested-input' : undefined}
+                      title={suggested?.seatNo ? '系統建議學號，請確認' : undefined}
                       value={sheet.seatNo}
                       onChange={(event) => onMeta({ seatNo: event.target.value })}
                       placeholder="01"

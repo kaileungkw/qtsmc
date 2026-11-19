@@ -11,6 +11,8 @@ import { analyseResults, getKeyAnswers, getSheetAnswers, suggestQuestionCountFro
 import { pdfToImages } from './lib/pdf';
 import { clearSession, loadSession, saveSession } from './lib/storage';
 import { downloadBackup, parseBackupFile } from './lib/export';
+import { loadRoster, type RosterData } from './lib/roster';
+import { applyRosterAndSuggestions } from './lib/assign';
 import type {
   Analysis,
   NamingEntry,
@@ -82,9 +84,11 @@ function makeSheet(blob: Blob, fileName: string, index: number): RuntimeSheet {
     fileName,
     name: baseName(fileName),
     className: '',
-    seatNo: String(index + 1).padStart(2, '0'),
+    seatNo: '',
     isKey: false,
     status: 'idle',
+    nameSource: 'default',
+    suggested: {},
     blob,
     previewUrl: URL.createObjectURL(blob),
     addedAt: Date.now() + index,
@@ -142,12 +146,51 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('scores');
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const toastTimer = useRef<number | null>(null);
+  const [roster, setRoster] = useState<RosterData | null>(null);
+  const [rosterStatus, setRosterStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [rosterFromCache, setRosterFromCache] = useState(false);
+  const rosterRequest = useRef(0);
 
   const showToast = useCallback((message: string, kind: ToastKind = 'info') => {
     setToast({ message, kind });
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(null), 4200);
   }, []);
+
+  const loadRosterNow = useCallback(
+    async (force = false) => {
+      const requestId = ++rosterRequest.current;
+      setRosterStatus('loading');
+      try {
+        const data = await loadRoster(force);
+        if (requestId !== rosterRequest.current) return;
+        setRoster(data);
+        setRosterFromCache(data.fromCache);
+        setRosterStatus('ready');
+        if (force) {
+          showToast(`全校名單已更新（${data.entries.length} 人）。`, 'success');
+        }
+      } catch {
+        if (requestId !== rosterRequest.current) return;
+        setRosterStatus('error');
+        if (force) {
+          showToast('未能載入全校名單；可手動輸入姓名。', 'warning');
+        }
+      }
+    },
+    [showToast],
+  );
+
+  // Teachers only need to upload PDFs: the whole-school roster is automatic.
+  useEffect(() => {
+    void loadRosterNow(false);
+  }, [loadRosterNow]);
+
+  // Apply roster names whenever the roster arrives or the saved session is ready.
+  useEffect(() => {
+    if (!roster || !hydrated) return;
+    setSheets((prev) => applyRosterAndSuggestions(prev, roster));
+  }, [roster, hydrated]);
 
   // Restore the previous browser-local session (images included, IndexedDB).
   useEffect(() => {
@@ -166,9 +209,14 @@ export default function App() {
                   ? 'done'
                   : 'idle'
                 : meta.status;
+            const nameSource =
+              meta.nameSource ??
+              (meta.name === baseName(meta.fileName) ? 'default' : 'manual');
             restored.push({
               ...meta,
               status,
+              nameSource,
+              suggested: meta.suggested ?? {},
               blob,
               previewUrl: URL.createObjectURL(blob),
             });
@@ -381,11 +429,17 @@ export default function App() {
       try {
         const detection = await runWorkerJob(worker, sheet.blob);
         const patch = detection.ok ? headerPatch(sheet, detection) : {};
+        const header = detection.ok ? detection.header : undefined;
         updated = updated.map((s) =>
           s.id === sheet.id
             ? {
                 ...s,
                 ...patch,
+                suggested: {
+                  ...s.suggested,
+                  ...(header?.className ? { className: false } : {}),
+                  ...(header?.seatNo ? { seatNo: false } : {}),
+                },
                 status: detection.ok ? 'done' : 'error',
                 detection,
                 error: detection.ok ? undefined : detection.warnings[0],
@@ -406,6 +460,10 @@ export default function App() {
       setSheets(updated);
     }
     worker.terminate();
+    if (roster) {
+      updated = applyRosterAndSuggestions(updated, roster);
+    }
+    setSheets(updated);
     setProcessing(false);
     setProgress({ done: updated.length, total: updated.length, current: '' });
     const nextKey = updated.find((s) => s.isKey) ?? updated[0];
@@ -430,12 +488,31 @@ export default function App() {
       showToast('批改完成，已計算成績及題目統計。', 'success');
     }
     setActiveTab('scores');
-  }, [processing, sheets, keyOverrides, overrides, showToast]);
+  }, [processing, sheets, keyOverrides, overrides, showToast, roster]);
 
   const editSheet = useCallback(
     (id: string, patch: Partial<Pick<RuntimeSheet, 'name' | 'className' | 'seatNo'>>) => {
       setSheets((prev) =>
-        prev.map((s) => (s.id === id ? { ...s, ...patch } : s)),
+        prev.map((s) => {
+          if (s.id !== id) return s;
+          const next: RuntimeSheet = { ...s, ...patch };
+          if (patch.name !== undefined) {
+            next.nameSource = 'manual';
+          }
+          if (
+            patch.name !== undefined ||
+            patch.className !== undefined ||
+            patch.seatNo !== undefined
+          ) {
+            next.suggested = {
+              ...s.suggested,
+              ...(patch.name !== undefined ? { name: false } : {}),
+              ...(patch.className !== undefined ? { className: false } : {}),
+              ...(patch.seatNo !== undefined ? { seatNo: false } : {}),
+            };
+          }
+          return next;
+        }),
       );
     },
     [],
@@ -515,6 +592,8 @@ export default function App() {
         );
         if (target) {
           target.name = entry.name;
+          target.nameSource = 'manual';
+          target.suggested = { ...target.suggested, name: false };
           used.add(target.id);
         } else {
           unmatched++;
@@ -526,6 +605,8 @@ export default function App() {
         while (nextIndex < next.length && used.has(next[nextIndex].id)) nextIndex++;
         if (nextIndex < next.length) {
           next[nextIndex].name = entry.name;
+          next[nextIndex].nameSource = 'manual';
+          next[nextIndex].suggested = { ...next[nextIndex].suggested, name: false };
           used.add(next[nextIndex].id);
           nextIndex++;
         }
@@ -781,6 +862,10 @@ export default function App() {
             onImportBackup={importBackup}
             onToast={showToast}
             autoCount={autoCount}
+            rosterStatus={rosterStatus}
+            rosterCount={roster?.entries.length ?? 0}
+            rosterFromCache={rosterFromCache}
+            onRefreshRoster={() => void loadRosterNow(true)}
           />
         )}
 

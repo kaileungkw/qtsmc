@@ -54,6 +54,14 @@ export interface NamingEntry {
 
 export type SheetStatus = 'idle' | 'processing' | 'done' | 'error';
 
+export interface SuggestedFields {
+  className?: boolean;
+  seatNo?: boolean;
+  name?: boolean;
+}
+
+export type NameSource = 'default' | 'roster' | 'manual' | 'suggested';
+
 export interface SheetRecord {
   id: string;
   fileName: string;
@@ -65,6 +73,8 @@ export interface SheetRecord {
   detection?: Detection;
   error?: string;
   addedAt: number;
+  nameSource?: NameSource;
+  suggested?: SuggestedFields;
 }
 
 export interface RuntimeSheet extends SheetRecord {
@@ -124,6 +134,7 @@ export interface StudentResult {
   multiCount: number;
   lowCount: number;
   needsReview: boolean;
+  suggested?: SuggestedFields;
 }
 
 export interface Summary {

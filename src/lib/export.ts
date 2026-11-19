@@ -70,6 +70,25 @@ function questionHeader(q: number): string {
   return `Q${q}`;
 }
 
+function exportNote(student: {
+  isKey: boolean;
+  needsReview: boolean;
+  suggested?: { className?: boolean; seatNo?: boolean; name?: boolean };
+}): string {
+  const notes: string[] = [];
+  if (student.isKey) notes.push('答案卷（滿分）');
+  else if (student.needsReview) notes.push('需覆核');
+  const suggested = student.suggested;
+  const suggestedFields: string[] = [];
+  if (suggested?.className) suggestedFields.push('班別');
+  if (suggested?.seatNo) suggestedFields.push('學號');
+  if (suggested?.name) suggestedFields.push('姓名');
+  if (suggestedFields.length) {
+    notes.push(`${suggestedFields.join('／')}為系統建議`);
+  }
+  return notes.join('；');
+}
+
 function allQuestionColumns(count: number): string[] {
   return Array.from({ length: count }, (_, i) => questionHeader(i + 1));
 }
@@ -209,7 +228,7 @@ export async function exportXlsx(ctx: ExportContext): Promise<void> {
       student.blankCount,
       student.multiCount,
       student.lowCount,
-      student.isKey ? '答案卷（滿分）' : student.needsReview ? '需覆核' : '',
+      exportNote(student),
       ...qCols.map((_, i) => answerText(student.answers[i + 1] ?? 'blank')),
     ];
     wsRow.height = 22;
@@ -584,7 +603,7 @@ export async function exportCsvZip(ctx: ExportContext): Promise<void> {
         student.blankCount,
         student.multiCount,
         student.lowCount,
-        student.isKey ? '答案卷（滿分）' : student.needsReview ? '需覆核' : '',
+        exportNote(student),
         ...qCols.map((_, i) => answerText(student.answers[i + 1] ?? 'blank')),
       ]),
     );
