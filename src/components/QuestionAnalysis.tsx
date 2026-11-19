@@ -156,7 +156,7 @@ export default function QuestionAnalysis({ analysis, settings }: QuestionAnalysi
         </div>
       </div>
 
-      <div className="table-scroller analysis-scroller">
+      <div className="table-scroller analysis-scroller analysis-desktop-table">
         <table className="analysis-table">
           <thead>
             <tr>
@@ -216,6 +216,49 @@ export default function QuestionAnalysis({ analysis, settings }: QuestionAnalysi
             ))}
           </tbody>
         </table>
+      </div>
+
+      <div className="analysis-mobile-list">
+        {questions.map((stat) => {
+          const weakClass =
+            stat.correctPercent >= 75 ? 'good' : stat.correctPercent >= 40 ? 'mid' : 'low';
+          return (
+            <article key={stat.q} className={`analysis-mobile-card ${!stat.keyValid ? 'invalid' : ''}`}>
+              <div className="amc-head">
+                <span className="amc-q">Q{stat.q}</span>
+                <span className={`answer-key small ${stat.keyValid ? '' : 'invalid'}`}>
+                  {stat.keyValid ? stat.key : '?'}
+                </span>
+                <div className="amc-score">
+                  <span>答對率</span>
+                  <strong>{stat.correctPercent.toFixed(1)}%</strong>
+                </div>
+              </div>
+              <div className={`amc-bar ${weakClass}`}>
+                <span style={{ width: `${Math.min(100, stat.correctPercent)}%` }} />
+              </div>
+              <div className="amc-options">
+                {(['A', 'B', 'C', 'D', 'blank', 'multi'] as const).map((option) => {
+                  const value = stat.options[option];
+                  return (
+                    <div
+                      key={option}
+                      className={`amc-option opt-${option} ${stat.key === option ? 'is-key' : ''}`}
+                    >
+                      <span>{option}</span>
+                      <b>{value.percent.toFixed(0)}%</b>
+                      <small>{value.count}</small>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="amc-foot">
+                <span>答對 {stat.correctCount} / {denominator}</span>
+                <span>有效作答 {stat.answeredCount}</span>
+              </div>
+            </article>
+          );
+        })}
       </div>
 
       {questions.length === 0 && (

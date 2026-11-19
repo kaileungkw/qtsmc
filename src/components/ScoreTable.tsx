@@ -80,6 +80,7 @@ export default function ScoreTable({
     (s) => s.lowCount > 0 || s.multiCount > 0,
   ).length;
   const blankCount = analysis.students.filter((s) => s.blankCount > 0).length;
+  const multiCount = analysis.students.filter((s) => s.multiCount > 0).length;
 
   if (!analysis.students.length) {
     return (
@@ -131,7 +132,7 @@ export default function ScoreTable({
             className={`filter-pill ${filter === 'multi' ? 'active' : ''}`}
             onClick={() => setFilter('multi')}
           >
-            有 multi
+            有 multi <b>{multiCount}</b>
           </button>
         </div>
         <label className="sort-box">
