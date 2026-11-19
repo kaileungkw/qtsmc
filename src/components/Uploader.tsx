@@ -13,7 +13,6 @@ import {
   Sparkles,
   Trash2,
   UploadCloud,
-  Users,
 } from 'lucide-react';
 import type { RuntimeSheet } from '../types';
 
@@ -29,7 +28,6 @@ interface UploaderProps {
   onProcess: () => void;
   onClear: () => void;
   onImportBackup: (file: File) => void;
-  onImportRoster: (file: File) => void;
 }
 
 export default function Uploader({
@@ -44,11 +42,9 @@ export default function Uploader({
   onProcess,
   onClear,
   onImportBackup,
-  onImportRoster,
 }: UploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const backupRef = useRef<HTMLInputElement>(null);
-  const rosterRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [showAllSheets, setShowAllSheets] = useState(false);
   const busy = processing || importProgress.active;
@@ -328,25 +324,6 @@ export default function Uploader({
       </div>
 
       <div className="format-note">
-        <button
-          className="backup-link"
-          onClick={() => rosterRef.current?.click()}
-          disabled={busy}
-          title="讀取 Student_namelist 工作表；名單只儲存在本機"
-        >
-          <Users size={13} /> 更新名單（Excel）
-        </button>
-        <input
-          ref={rosterRef}
-          type="file"
-          accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
-          hidden
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) onImportRoster(file);
-            event.target.value = '';
-          }}
-        />
         <button
           className="backup-link"
           onClick={() => backupRef.current?.click()}

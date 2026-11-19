@@ -19,14 +19,7 @@ import {
   saveTaskSession,
 } from './lib/tasks';
 import { downloadBackup, parseBackupFile } from './lib/export';
-import {
-  clearCustomRoster,
-  loadRoster,
-  lookupRoster,
-  parseRosterFile,
-  saveCustomRoster,
-  type RosterData,
-} from './lib/roster';
+import { loadRoster, lookupRoster, type RosterData } from './lib/roster';
 import { applyRosterAndSuggestions } from './lib/assign';
 import type {
   Analysis,
@@ -316,32 +309,6 @@ export default function App() {
   // Teachers only need to upload PDFs: the whole-school roster is automatic.
   useEffect(() => {
     void loadRosterNow(false);
-  }, [loadRosterNow]);
-
-  const importRoster = useCallback(
-    async (file: File) => {
-      try {
-        const entries = await parseRosterFile(file);
-        if (entries.length < 10) {
-          throw new Error('找不到 Student_namelist 工作表或欄位不正確');
-        }
-        const data = saveCustomRoster(entries, file.name);
-        setRoster(data);
-        setRosterStatus('ready');
-        showToast(`已更新名單（${entries.length} 人），只儲存在本機。`, 'success');
-      } catch (error) {
-        showToast(
-          `名單更新失敗：${error instanceof Error ? error.message : '未知錯誤'}`,
-          'error',
-        );
-      }
-    },
-    [showToast],
-  );
-
-  const resetRoster = useCallback(async () => {
-    clearCustomRoster();
-    await loadRosterNow(true);
   }, [loadRosterNow]);
 
   // Apply roster names whenever the roster arrives or the saved session is ready.
@@ -1235,7 +1202,6 @@ export default function App() {
             onProcess={processAll}
             onClear={clearCurrentSheets}
             onImportBackup={importBackup}
-            onImportRoster={importRoster}
           />
         )}
 
@@ -1329,12 +1295,7 @@ export default function App() {
         )}
       </main>
 
-      <Footer
-        onDeleteTask={() => void deleteCurrentTask()}
-        onImportRoster={importRoster}
-        customRoster={Boolean(roster?.custom)}
-        onResetRoster={() => void resetRoster()}
-      />
+      <Footer onDeleteTask={() => void deleteCurrentTask()} />
 
       {taskLoadError && (
         <div
