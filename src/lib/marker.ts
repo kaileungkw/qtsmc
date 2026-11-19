@@ -619,6 +619,53 @@ function isUpsideDown(
   return below >= 2 && above === 0;
 }
 
+/**
+ * Align one printed header column (Level, Class, tens or units) independently.
+ * The header table can be a few pixels off from the answer-frame-relative
+ * template, especially with a slightly skewed ADF scan, while the answer grid
+ * itself is centred correctly.
+ */
+function alignHeaderColumn(
+  gray: Uint8Array,
+  width: number,
+  height: number,
+  base: { cx: number; cy: number }[],
+  hw: number,
+  hh: number,
+): { cx: number; cy: number }[] {
+  const scoreAt = (dx: number, dy: number): number => {
+    let sum = 0;
+    for (const point of base) {
+      sum += ringMean(
+        gray,
+        width,
+        height,
+        Math.round(point.cx + dx),
+        Math.round(point.cy + dy),
+        hw,
+        hh,
+      );
+    }
+    return base.length ? sum / base.length : Infinity;
+  };
+  let best = { score: Infinity, dx: 0, dy: 0 };
+  for (let dy = -8; dy <= 8; dy += 2) {
+    for (let dx = -20; dx <= 20; dx += 2) {
+      const score = scoreAt(dx, dy);
+      if (score < best.score) best = { score, dx, dy };
+    }
+  }
+  for (let dy = best.dy - 1; dy <= best.dy + 1; dy++) {
+    for (let dx = best.dx - 1; dx <= best.dx + 1; dx++) {
+      const score = scoreAt(dx, dy);
+      if (score < best.score) best = { score, dx, dy };
+    }
+  }
+  return base.map((point) => ({
+    cx: point.cx + best.dx,
+    cy: point.cy + best.dy,
+  }));
+}
 
 /** Read Level / Class / Class No from the printed table above the answer grid. */
 export function readHeaderFields(
@@ -641,17 +688,26 @@ export function readHeaderFields(
   const noUnitsX = frame.x + 0.592 * frame.w;
   if (y0 < 20 || levelX < 0 || noUnitsX > width) return undefined;
 
-  const centers: { cx: number; cy: number }[] = [];
+  const levelBase: { cx: number; cy: number }[] = [];
   for (let row = 0; row < 6; row++) {
-    centers.push({ cx: levelX, cy: y0 + row * pitch });
+    levelBase.push({ cx: levelX, cy: y0 + row * pitch });
   }
+  const classBase: { cx: number; cy: number }[] = [];
   for (let row = 0; row < 4; row++) {
-    centers.push({ cx: classX, cy: y0 + row * pitch });
+    classBase.push({ cx: classX, cy: y0 + row * pitch });
   }
+  const tensBase: { cx: number; cy: number }[] = [];
+  const unitsBase: { cx: number; cy: number }[] = [];
   for (let row = 0; row < 10; row++) {
-    centers.push({ cx: noTensX, cy: y0 + row * pitch });
-    centers.push({ cx: noUnitsX, cy: y0 + row * pitch });
+    tensBase.push({ cx: noTensX, cy: y0 + row * pitch });
+    unitsBase.push({ cx: noUnitsX, cy: y0 + row * pitch });
   }
+  const levelPoints = alignHeaderColumn(gray, width, height, levelBase, hw, hh);
+  const classPoints = alignHeaderColumn(gray, width, height, classBase, hw, hh);
+  const tensPoints = alignHeaderColumn(gray, width, height, tensBase, hw, hh);
+  const unitsPoints = alignHeaderColumn(gray, width, height, unitsBase, hw, hh);
+  const centers = [...levelPoints, ...classPoints, ...tensPoints, ...unitsPoints];
+
   // Verify the printed header table is actually present; a cropped image must
   // not accidentally read background paper as a class.
   let printed = 0;
@@ -680,10 +736,21 @@ export function readHeaderFields(
       paper,
       thr,
     );
-    // Header bubbles are sometimes filled solid, and sometimes marked with a
-    // couple of pencil strokes. Use the normal ink measure; the printed table
-    // support check above already rejects images without a header.
-    return measured.ink;
+    // Header bubbles are often only lightly stippled, while their printed
+    // outline contributes to the normal patch score. A strict inner core
+    // separates a few pencil dots (real fill) from the outline (blank).
+    const rx = Math.max(2, Math.round(bw * 0.16));
+    const ry = Math.max(1, Math.round(bh * 0.12));
+    let coreDark = 0;
+    let coreCount = 0;
+    for (let y = measured.cy - ry; y <= measured.cy + ry; y++) {
+      for (let x = measured.cx - rx; x <= measured.cx + rx; x++) {
+        if (x < 0 || x >= width || y < 0 || y >= height) continue;
+        if (gray[y * width + x] < paper - 20) coreDark++;
+        coreCount++;
+      }
+    }
+    return measured.ink + 0.75 * (coreCount ? coreDark / coreCount : 0);
   };
 
   const pickScores = (
@@ -701,10 +768,6 @@ export function readHeaderFields(
     return { index: top.index, score: top.score, margin: top.score - second.score };
   };
 
-  const levelPoints = centers.slice(0, 6);
-  const classPoints = centers.slice(6, 10);
-  const tensPoints = centers.slice(10).filter((_, i) => i % 2 === 0);
-  const unitsPoints = centers.slice(10).filter((_, i) => i % 2 === 1);
   const levelScores = levelPoints.map((p) => measure(p.cx, p.cy));
   const classScores = classPoints.map((p) => measure(p.cx, p.cy));
   const tensScores = tensPoints.map((p) => measure(p.cx, p.cy));
