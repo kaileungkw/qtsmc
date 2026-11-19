@@ -37,6 +37,7 @@ interface ReviewModalProps {
   onResetAnswers: () => void;
   onMeta: (patch: Partial<Pick<RuntimeSheet, 'name' | 'className' | 'seatNo'>>) => void;
   onClose: () => void;
+  onComplete: () => void;
   onPrev: () => void;
   onNext: () => void;
   onOpenKeyEditor: () => void;
@@ -56,21 +57,31 @@ export default function ReviewModal({
   onResetAnswers,
   onMeta,
   onClose,
+  onComplete,
   onPrev,
   onNext,
   onOpenKeyEditor,
 }: ReviewModalProps) {
+  const student = analysis.students.find((s) => s.id === sheet.id);
   const [zoom, setZoom] = useState(() =>
     typeof window !== 'undefined' && window.innerWidth < 560 ? 130 : 100,
   );
   const [enhanceView, setEnhanceView] = useState(true);
-  const [onlyReview, setOnlyReview] = useState(false);
+  const initialFlags = Boolean(
+    student && !sheet.isKey && (student.lowCount > 0 || student.multiCount > 0 || student.blankCount > 0),
+  );
+  const [onlyReview, setOnlyReview] = useState(initialFlags);
   const answers = useMemo(() => getSheetAnswers(sheet, overrides), [sheet, overrides]);
-  const student = analysis.students.find((s) => s.id === sheet.id);
   const detection = sheet.detection;
   const count = settings.questionCount;
   const overrideMap = overrides?.answers ?? {};
   const overrideCount = Object.keys(overrideMap).length;
+
+  // When moving to the next sheet, start with its flagged questions again.
+  useEffect(() => {
+    setOnlyReview(initialFlags);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sheet.id]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -89,11 +100,11 @@ export default function ReviewModal({
       const key = keyAnswers[q];
       const isCorrect = !sheet.isKey && key && key !== 'blank' && key !== 'multi' && value === key;
       const flagged =
-        Boolean(overrideMap[q]) ||
-        detected?.status === 'low' ||
-        detected?.status === 'multi' ||
-        value === 'multi' ||
-        value === 'blank';
+        !overrideMap[q] &&
+        (detected?.status === 'low' ||
+          detected?.status === 'multi' ||
+          value === 'multi' ||
+          value === 'blank');
       return {
         q,
         value,
@@ -396,10 +407,18 @@ export default function ReviewModal({
                   <p>這頁沒有需要覆核的題目。</p>
                 </div>
               )}
+              {onlyReview && (
+                <button
+                  className="show-all-answers"
+                  onClick={() => setOnlyReview(false)}
+                >
+                  顯示全部 {count} 題
+                </button>
+              )}
             </div>
 
             <div className="review-footer">
-              <button className="btn ghost small" onClick={onClose}>
+              <button className="btn ghost small" onClick={onComplete}>
                 完成覆核
               </button>
               <div className="review-nav">

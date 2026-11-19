@@ -82,6 +82,8 @@ export interface SheetRecord {
   addedAt: number;
   nameSource?: NameSource;
   suggested?: SuggestedFields;
+  /** Teacher pressed 完成覆核 for this sheet. */
+  reviewed?: boolean;
 }
 
 export interface RuntimeSheet extends SheetRecord {

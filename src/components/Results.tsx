@@ -22,6 +22,10 @@ import QuestionAnalysis from './QuestionAnalysis';
 import OptionDistribution from './OptionDistribution';
 import ExportPanel from './ExportPanel';
 import type { ToastKind } from './Toast';
+import {
+  buildFilterCounts,
+  type ScoreFilter,
+} from '../lib/review';
 
 type Tab = 'scores' | 'questions' | 'options' | 'export';
 
@@ -208,27 +212,23 @@ export default function Results({
   rosterStatus,
   onRefreshRoster,
 }: ResultsProps) {
+  const [scoreFilter, setScoreFilter] = useState<ScoreFilter>('all');
+  const counts = buildFilterCounts(analysis.students, sheets);
   const failed = sheets.filter((s) => !s.detection?.ok).length;
   const invalidKeys = analysis.questions.filter((q) => !q.keyValid).length;
-  const suggestedStudents = analysis.students.filter(
-    (s) =>
-      !s.isKey &&
-      (s.suggested?.className || s.suggested?.seatNo || s.suggested?.name),
-  ).length;
-  const reviewStudents = analysis.included.filter(
-    (s) => s.lowCount > 0 || s.multiCount > 0 || s.blankCount > 0,
-  ).length;
   const sheetWarnings = sheets
     .flatMap((s) => s.detection?.warnings ?? [])
     .filter((warning, index, list) => list.indexOf(warning) === index);
-  const studentRows = analysis.students.filter((s) => !s.isKey);
-  const missingSeat = studentRows.filter((s) => !s.seatNo.trim()).length;
-  const seatCounts = new Map<string, number>();
-  for (const student of studentRows) {
-    const seat = student.seatNo.trim();
-    if (seat) seatCounts.set(seat, (seatCounts.get(seat) ?? 0) + 1);
-  }
-  const duplicateSeats = [...seatCounts.entries()].filter(([, count]) => count > 1);
+
+  const showScores = (filter: ScoreFilter) => {
+    onTabChange('scores');
+    setScoreFilter(filter);
+    window.setTimeout(() => {
+      document
+        .querySelector('.score-table-wrap')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+  };
 
   const attention: {
     key: string;
@@ -250,15 +250,15 @@ export default function Results({
       onClick: onOpenManager,
     });
   }
-  if (missingSeat > 0 || duplicateSeats.length > 0) {
+  if (counts.headers > 0) {
     attention.push({
       key: 'headers',
       label: '班別／學號',
-      count: missingSeat + duplicateSeats.length,
+      count: counts.headers,
       tone: 'warning',
       icon: AlertTriangle,
-      title: '部分班別／學號未能讀取或重複；可直接在成績表修改。',
-      onClick: () => onTabChange('scores'),
+      title: '部分班別／學號未能讀取或重複；按此只看這些學生。',
+      onClick: () => showScores('headers'),
     });
   }
   if (rosterStatus === 'error') {
@@ -271,15 +271,15 @@ export default function Results({
       onClick: onRefreshRoster,
     });
   }
-  if (suggestedStudents > 0) {
+  if (counts.suggested > 0) {
     attention.push({
       key: 'suggested',
       label: '系統建議',
-      count: suggestedStudents,
+      count: counts.suggested,
       tone: 'warning',
       icon: AlertTriangle,
-      title: '黃色欄位為系統建議，請在成績表確認。',
-      onClick: () => onTabChange('scores'),
+      title: '黃色欄位為系統建議；按此只看這些學生。',
+      onClick: () => showScores('suggested'),
     });
   }
   if (invalidKeys > 0) {
@@ -293,18 +293,15 @@ export default function Results({
       onClick: onOpenKeyEditor,
     });
   }
-  if (reviewStudents > 0) {
+  if (counts.review > 0) {
     attention.push({
       key: 'review',
-      label: '作答覆核',
-      count: reviewStudents,
+      label: '需覆核',
+      count: counts.review,
       tone: 'info',
       icon: Sparkles,
-      title: '存疑、多選或未填作答；可逐張覆核。',
-      onClick: () => {
-        onTabChange('scores');
-        document.querySelector('.filter-pill.review')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      },
+      title: '存疑、多選或未填作答；按此只看需覆核的學生。',
+      onClick: () => showScores('review'),
     });
   }
   if (sheetWarnings.length > 0) {
@@ -408,6 +405,8 @@ export default function Results({
             analysis={analysis}
             settings={settings}
             sheets={sheets}
+            filter={scoreFilter}
+            onFilterChange={setScoreFilter}
             onReview={onReview}
             onEditSheet={onEditSheet}
             onExport={() => onTabChange('export')}

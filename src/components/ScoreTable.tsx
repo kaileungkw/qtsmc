@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowDownUp,
   ArrowUpRight,
@@ -12,11 +12,21 @@ import {
 } from 'lucide-react';
 import type { Analysis, RuntimeSheet, Settings, StudentResult } from '../types';
 import { uiAnswerLabel } from '../lib/scoring';
+import {
+  buildFilterCounts,
+  headerIssueIds,
+  matchesScoreFilter,
+  needsReviewStudent,
+  reviewedSheetIds,
+  type ScoreFilter,
+} from '../lib/review';
 
 interface ScoreTableProps {
   analysis: Analysis;
   settings: Settings;
   sheets: RuntimeSheet[];
+  filter: ScoreFilter;
+  onFilterChange: (filter: ScoreFilter) => void;
   onReview: (id: string) => void;
   onEditSheet: (
     id: string,
@@ -25,7 +35,6 @@ interface ScoreTableProps {
   onExport: () => void;
 }
 
-type ScoreFilter = 'all' | 'review' | 'blank' | 'multi';
 type SortMode = 'order' | 'score-desc' | 'score-asc' | 'name';
 
 function answerClass(student: StudentResult, q: number): string {
@@ -40,15 +49,24 @@ export default function ScoreTable({
   analysis,
   settings,
   sheets,
+  filter,
+  onFilterChange,
   onReview,
   onEditSheet,
   onExport,
 }: ScoreTableProps) {
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<ScoreFilter>('all');
   const [sort, setSort] = useState<SortMode>('order');
   const questionCount = settings.questionCount;
   const sheetById = new Map(sheets.map((s) => [s.id, s]));
+  const reviewed = reviewedSheetIds(sheets);
+  const headers = headerIssueIds(analysis.students);
+  const counts = buildFilterCounts(analysis.students, sheets);
+
+  // A filter can become empty after the last row is reviewed; fall back to all.
+  useEffect(() => {
+    if (filter !== 'all' && counts[filter] === 0) onFilterChange('all');
+  }, [filter, counts, onFilterChange]);
 
   const rows = useMemo(() => {
     const byName = (a: StudentResult, b: StudentResult) =>
@@ -69,19 +87,34 @@ export default function ScoreTable({
       const sheet = sheetById.get(s.id);
       const searchable = `${s.name} ${s.className} ${s.seatNo} ${sheet?.fileName ?? ''}`.toLowerCase();
       if (q && !searchable.includes(q)) return false;
-      if (filter === 'review') return s.lowCount > 0 || s.multiCount > 0;
-      if (filter === 'blank') return s.blankCount > 0;
-      if (filter === 'multi') return s.multiCount > 0;
-      return true;
+      return matchesScoreFilter(s, filter, { reviewed, headers });
     });
-  }, [analysis.students, query, filter, sort, sheetById]);
+  }, [analysis.students, query, filter, sort, sheetById, reviewed, headers]);
 
-  const total = analysis.included.length;
-  const reviewCount = analysis.included.filter(
-    (s) => s.lowCount > 0 || s.multiCount > 0,
-  ).length;
-  const blankCount = analysis.students.filter((s) => s.blankCount > 0).length;
-  const multiCount = analysis.students.filter((s) => s.multiCount > 0).length;
+  const filterItems: {
+    id: ScoreFilter;
+    label: string;
+    count: number;
+    title?: string;
+  }[] = [
+    { id: 'all', label: '全部', count: counts.all },
+    {
+      id: 'review',
+      label: '需覆核',
+      count: counts.review,
+      title: '包括存疑、多選及未填；完成覆核後會移出',
+    },
+    { id: 'blank', label: '未填', count: counts.blank },
+    { id: 'multi', label: '多選', count: counts.multi },
+    {
+      id: 'headers',
+      label: '班別／學號',
+      count: counts.headers,
+      title: '班別或學號未讀到，或同班學號重複',
+    },
+    { id: 'suggested', label: '系統建議', count: counts.suggested },
+    { id: 'noname', label: '姓名不詳', count: counts.noname },
+  ];
 
   if (!analysis.students.length) {
     return (
@@ -106,35 +139,19 @@ export default function ScoreTable({
           />
         </div>
         <div className="filter-group">
-          <button
-            className={`filter-pill ${filter === 'all' ? 'active' : ''}`}
-            onClick={() => setFilter('all')}
-          >
-            全部 <b>{analysis.students.length}</b>
-          </button>
-          {reviewCount > 0 && (
-            <button
-              className={`filter-pill review ${filter === 'review' ? 'active' : ''}`}
-              onClick={() => setFilter('review')}
-            >
-              需覆核 <b>{reviewCount}</b>
-            </button>
-          )}
-          {blankCount > 0 && (
-            <button
-              className={`filter-pill ${filter === 'blank' ? 'active' : ''}`}
-              onClick={() => setFilter('blank')}
-            >
-              未填 <b>{blankCount}</b>
-            </button>
-          )}
-          {multiCount > 0 && (
-            <button
-              className={`filter-pill ${filter === 'multi' ? 'active' : ''}`}
-              onClick={() => setFilter('multi')}
-            >
-              多選 <b>{multiCount}</b>
-            </button>
+          {filterItems.map((item) =>
+            item.count > 0 || filter === item.id ? (
+              <button
+                key={item.id}
+                className={`filter-pill ${item.id === 'review' ? 'review' : ''} ${
+                  filter === item.id ? 'active' : ''
+                }`}
+                onClick={() => onFilterChange(item.id)}
+                title={item.title}
+              >
+                {item.label} <b>{item.count}</b>
+              </button>
+            ) : null,
           )}
         </div>
         <label className="sort-box">
@@ -160,13 +177,13 @@ export default function ScoreTable({
       <div className="table-legend">
         <span className="legend-item correct"><i />答對</span>
         <span className="legend-item wrong"><i />答錯</span>
-        {blankCount > 0 && <span className="legend-item blank"><i />未填</span>}
-        {multiCount > 0 && <span className="legend-item multi"><i />多選</span>}
+        {counts.blank > 0 && <span className="legend-item blank"><i />未填</span>}
+        {counts.multi > 0 && <span className="legend-item multi"><i />多選</span>}
         <span className="legend-item key" title="不計入統計"><i />答案卷</span>
         <span className="legend-item suggested"><i />＊ 系統建議</span>
         <span className="legend-spacer" />
         <span>
-          共 {total} 位 · 每題 1 分 · 點擊查看標記圖
+          共 {analysis.included.length} 位 · 每題 1 分 · 點擊查看標記圖
         </span>
       </div>
 
@@ -196,7 +213,8 @@ export default function ScoreTable({
             {rows.map((student) => {
               const sheet = sheetById.get(student.id);
               const index = analysis.students.findIndex((s) => s.id === student.id);
-              const needsReview = !student.isKey && (student.lowCount > 0 || student.multiCount > 0);
+              const reviewedSheet = Boolean(sheet?.reviewed);
+              const needsReview = needsReviewStudent(student, reviewedSheet);
               const suggested = student.suggested;
               const suggestedAny = Boolean(
                 suggested?.className || suggested?.seatNo || suggested?.name,
@@ -292,14 +310,18 @@ export default function ScoreTable({
                   <td className="status-col">
                     {student.isKey ? (
                       <span className="status-chip key">滿分</span>
+                    ) : reviewedSheet ? (
+                      <span className="status-chip ok">
+                        <Check size={12} /> 覆核完成
+                      </span>
                     ) : needsReview ? (
                       <span className="status-chip review">
-                        <span className="dot" /> 覆核
+                        <span className="dot" /> 需覆核
                       </span>
                     ) : suggestedAny ? (
                       <span className="status-chip suggested">＊ 系統建議</span>
-                    ) : student.blankCount > 0 ? (
-                      <span className="status-chip blank">有未填</span>
+                    ) : !student.name.trim() ? (
+                      <span className="status-chip blank">姓名不詳</span>
                     ) : (
                       <span className="status-chip ok">
                         <Check size={12} /> 正常
@@ -343,29 +365,34 @@ export default function ScoreTable({
         {rows.map((student) => {
           const sheet = sheetById.get(student.id);
           const index = analysis.students.findIndex((s) => s.id === student.id);
-          const needsReview = !student.isKey && (student.lowCount > 0 || student.multiCount > 0);
+          const reviewedSheet = Boolean(sheet?.reviewed);
+          const needsReview = needsReviewStudent(student, reviewedSheet);
           const suggested = student.suggested;
           const suggestedAny = Boolean(
             suggested?.className || suggested?.seatNo || suggested?.name,
           );
           const statusLabel = student.isKey
             ? '滿分'
-            : needsReview
-              ? '覆核'
-              : suggestedAny
-                ? '系統建議'
-                : student.blankCount > 0
-                  ? '有未填'
-                  : '正常';
+            : reviewedSheet
+              ? '覆核完成'
+              : needsReview
+                ? '需覆核'
+                : suggestedAny
+                  ? '系統建議'
+                  : !student.name.trim()
+                    ? '姓名不詳'
+                    : '正常';
           const statusClass = student.isKey
             ? 'key'
-            : needsReview
-              ? 'review'
-              : suggestedAny
-                ? 'suggested'
-                : student.blankCount > 0
-                  ? 'blank'
-                  : 'ok';
+            : reviewedSheet
+              ? 'ok'
+              : needsReview
+                ? 'review'
+                : suggestedAny
+                  ? 'suggested'
+                  : !student.name.trim()
+                    ? 'blank'
+                    : 'ok';
           return (
             <article
               key={student.id}
@@ -376,7 +403,7 @@ export default function ScoreTable({
                 <span className="msc-index">{index + 1}</span>
                 <div className="msc-name">
                   <strong className={suggested?.name ? 'suggested-text' : undefined}>
-                    {student.name || sheet?.fileName || '未命名'}
+                    {student.name}
                   </strong>
                   <span className={`msc-sub ${suggested?.className || suggested?.seatNo ? 'suggested-text' : ''}`}>
                     {student.className || '—'} · {student.seatNo || '—'}

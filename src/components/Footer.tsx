@@ -43,7 +43,7 @@ export default function Footer({ onDeleteTask }: FooterProps) {
           <button className="text-btn" onClick={onDeleteTask}>
             刪除目前任務
           </button>
-          <span>© {new Date().getFullYear()} QTSMC</span>
+          <span>© {new Date().getFullYear()} QTSMC · v{__APP_VERSION__}</span>
         </div>
       </div>
     </footer>

@@ -93,7 +93,7 @@ function makeSheet(blob: Blob, fileName: string, index: number): RuntimeSheet {
   return {
     id: uid(),
     fileName,
-    name: baseName(fileName),
+    name: '',
     className: '',
     seatNo: '',
     candidateNo: undefined,
@@ -126,8 +126,15 @@ function runtimeFromSaved(saved: SavedSession): RuntimeSheet[] {
     const nameSource =
       meta.nameSource ??
       (meta.name === baseName(meta.fileName) ? 'default' : 'manual');
+    // Older sessions stored the PDF page name as the student name. A name that
+    // was never matched from the roster should stay blank, not look real.
+    const name =
+      nameSource === 'default' && meta.name === baseName(meta.fileName)
+        ? ''
+        : meta.name;
     restored.push({
       ...meta,
+      name,
       status,
       nameSource,
       suggested: meta.suggested ?? {},
@@ -636,7 +643,7 @@ export default function App() {
       setProgress({ done: i, total: updated.length, current: sheet.fileName });
       updated = updated.map((s) =>
         s.id === sheet.id
-          ? { ...s, status: 'processing', error: undefined }
+          ? { ...s, status: 'processing', error: undefined, reviewed: false }
           : s,
       );
       setSheets(updated);
@@ -1065,15 +1072,24 @@ export default function App() {
         const placeholder = placeholderImage();
         const restored: RuntimeSheet[] = saved.sheetMeta.map((meta) => {
           const blob = saved.files?.[meta.id] ?? placeholder;
+          const nameSource =
+            meta.nameSource ??
+            (meta.name === baseName(meta.fileName) ? 'default' : 'manual');
+          const name =
+            nameSource === 'default' && meta.name === baseName(meta.fileName)
+              ? ''
+              : meta.name;
           return {
             ...meta,
+            name,
+            nameSource,
             blob,
             previewUrl: URL.createObjectURL(blob),
             status: meta.detection?.ok ? 'done' : 'error',
           };
         });
         for (const sheet of sheets) URL.revokeObjectURL(sheet.previewUrl);
-        setSheets(restored);
+        setSheets(roster ? applyRosterAndSuggestions(restored, roster) : restored);
         setSettings({ ...DEFAULT_SETTINGS, ...saved.settings });
         setOverrides(saved.edits ?? {});
         setKeyOverrides(saved.keyOverrides ?? {});
@@ -1088,11 +1104,25 @@ export default function App() {
         );
       }
     },
-    [sheets, showToast],
+    [sheets, showToast, roster],
   );
 
   const reviewIndex = sheets.findIndex((s) => s.id === reviewId);
   const reviewSheet = reviewIndex >= 0 ? sheets[reviewIndex] : null;
+  const completeReview = useCallback(
+    (id: string) => {
+      const target = sheets.find((sheet) => sheet.id === id);
+      setReviewId(null);
+      if (!target || target.isKey) return;
+      setSheets((prev) =>
+        prev.map((sheet) =>
+          sheet.id === id ? { ...sheet, reviewed: true } : sheet,
+        ),
+      );
+      showToast('已完成覆核。', 'success');
+    },
+    [sheets, showToast],
+  );
   const canShowResults =
     settings.questionCount > 0 &&
     sheets.some((s) => s.status === 'done' || s.detection?.ok);
@@ -1232,6 +1262,7 @@ export default function App() {
           onResetAnswers={() => resetSheetAnswers(reviewSheet.id)}
           onMeta={(patch) => editSheet(reviewSheet.id, patch)}
           onClose={() => setReviewId(null)}
+          onComplete={() => completeReview(reviewSheet.id)}
           onPrev={() =>
             setReviewId(sheets[(reviewIndex - 1 + sheets.length) % sheets.length].id)
           }

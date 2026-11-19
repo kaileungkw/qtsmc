@@ -4365,6 +4365,23 @@ main {
   color: var(--muted);
 }
 
+.show-all-answers {
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 9px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.show-all-answers:hover {
+  border-color: var(--teal-2);
+  color: var(--teal);
+}
+
 .review-footer {
   display: flex;
   align-items: center;

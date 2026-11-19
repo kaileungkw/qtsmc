@@ -175,5 +175,14 @@ export function applyRosterAndSuggestions<T extends SheetRecord>(
     }
   }
 
+  // 3) Never keep the PDF page name as a student name. If no roster match was
+  // found, the name should stay blank and be flagged by the 姓名不詳 filter.
+  for (const sheet of next) {
+    if (canReplaceName(sheet) && sheet.name === baseName(sheet.fileName)) {
+      sheet.name = '';
+      sheet.nameSource = 'default';
+    }
+  }
+
   return next;
 }
