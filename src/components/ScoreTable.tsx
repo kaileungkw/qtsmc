@@ -401,7 +401,7 @@ export default function ScoreTable({
               <div className="msc-meta">
                 <span>未填 {student.blankCount}</span>
                 <span>多選 {student.multiCount}</span>
-                <span>低信心 {student.lowCount}</span>
+                <span>存疑 {student.lowCount}</span>
                 {sheet && <span className="msc-file">{sheet.fileName}</span>}
               </div>
               <div className="msc-answers">

@@ -20,7 +20,7 @@ import type {
   SheetOverrides,
 } from '../types';
 import { exportCsvZip, exportXlsx } from '../lib/export';
-import { subjectGroups } from '../lib/subjects';
+import { FORM_LEVELS, allSubjects, subjectGroups } from '../lib/subjects';
 import type { ToastKind } from './Toast';
 
 interface ExportPanelProps {
@@ -121,6 +121,27 @@ export default function ExportPanel({
                 onChange={(event) => onSettingsChange({ title: event.target.value })}
                 placeholder="例如：S4 Physics Quiz 3"
               />
+            </label>
+            <label className="field">
+              <span>年級</span>
+              <select
+                value={settings.formLevel}
+                onChange={(event) => {
+                  const formLevel = event.target.value;
+                  const keepSubject = allSubjects(formLevel).includes(settings.subject);
+                  onSettingsChange({
+                    formLevel,
+                    subject: keepSubject ? settings.subject : '',
+                  });
+                }}
+              >
+                <option value="">未選擇</option>
+                {FORM_LEVELS.map((level) => (
+                  <option key={level} value={level}>
+                    {level}
+                  </option>
+                ))}
+              </select>
             </label>
             <label className="field">
               <span>科目</span>

@@ -130,7 +130,7 @@ export default function KeyEditor({
                 <span className="q-label">Q{row.q}</span>
                 <span className="detected-answer">
                   偵測 <b>{row.detected === 'blank' ? '未填' : row.detected === 'multi' ? row.multiLabel ?? '多選' : row.detected}</b>
-                  {row.status === 'low' && <i>低信心</i>}
+                  {row.status === 'low' && <i>存疑</i>}
                   {row.status === 'multi' && <i>{row.multiLabel ?? 'multi'}</i>}
                 </span>
                 {row.overridden && <span className="edited-pill">已修正</span>}

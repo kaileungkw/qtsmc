@@ -300,7 +300,7 @@ export default function Results({
       count: reviewStudents,
       tone: 'info',
       icon: Sparkles,
-      title: '低信心、多選或未填作答；可逐張覆核。',
+      title: '存疑、多選或未填作答；可逐張覆核。',
       onClick: () => {
         onTabChange('scores');
         document.querySelector('.filter-pill.review')?.scrollIntoView({ behavior: 'smooth', block: 'center' });

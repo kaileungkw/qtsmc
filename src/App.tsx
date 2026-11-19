@@ -4,7 +4,7 @@ import Uploader from './components/Uploader';
 import Results from './components/Results';
 import ReviewModal from './components/ReviewModal';
 import KeyEditor from './components/KeyEditor';
-import TaskBar from './components/TaskBar';
+import TaskSetupModal from './components/TaskSetupModal';
 import Toast, { type ToastKind } from './components/Toast';
 import Footer from './components/Footer';
 import { analyseResults, getKeyAnswers, getSheetAnswers, suggestPassMark, suggestQuestionCountFromClass, MAX_QUESTIONS } from './lib/scoring';
@@ -175,7 +175,12 @@ async function bootTasks(): Promise<BootResult> {
     if (legacy) {
       const id = uid();
       const title = legacy.settings.title.trim() || '上一個任務';
-      const meta = createTaskMeta(id, title, legacy.settings.subject);
+      const meta = createTaskMeta(
+        id,
+        title,
+        legacy.settings.subject,
+        legacy.settings.formLevel ?? '',
+      );
       meta.sheetCount = legacy.sheetMeta.length;
       meta.questionCount = legacy.settings.questionCount || 0;
       meta.updatedAt = legacy.savedAt || Date.now();
@@ -252,6 +257,8 @@ export default function App() {
   const [tasks, setTasks] = useState<TaskMeta[]>([]);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [taskBusy, setTaskBusy] = useState(false);
+  const [setupMode, setSetupMode] = useState<'new' | 'upload' | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const bootRef = useRef<Promise<BootResult> | null>(null);
 
   const showToast = useCallback((message: string, kind: ToastKind = 'info') => {
@@ -429,6 +436,7 @@ export default function App() {
       if (
         task.title === settings.title &&
         task.subject === settings.subject &&
+        task.formLevel === settings.formLevel &&
         task.sheetCount === sheets.length &&
         task.questionCount === settings.questionCount
       ) {
@@ -439,6 +447,7 @@ export default function App() {
         ...task,
         title: settings.title,
         subject: settings.subject,
+        formLevel: settings.formLevel,
         sheetCount: sheets.length,
         questionCount: settings.questionCount,
         updatedAt: Date.now(),
@@ -449,6 +458,7 @@ export default function App() {
     activeTaskId,
     settings.title,
     settings.subject,
+    settings.formLevel,
     settings.questionCount,
     sheets.length,
   ]);
@@ -539,6 +549,27 @@ export default function App() {
       setShowManager(true);
     },
     [processing, sheets.length, showToast],
+  );
+
+  // Year and subject are required before the first upload, so every task has a
+  // readable label and the pass mark can follow the form level.
+  const handleFiles = useCallback(
+    (files: File[]) => {
+      if (!files.length || processing || importProgress.active) return;
+      if (!settings.formLevel.trim() || !settings.subject.trim()) {
+        setPendingFiles(files);
+        setSetupMode('upload');
+        return;
+      }
+      void addFiles(files);
+    },
+    [
+      addFiles,
+      importProgress.active,
+      processing,
+      settings.formLevel,
+      settings.subject,
+    ],
   );
 
   const removeSheet = useCallback(
@@ -805,6 +836,7 @@ export default function App() {
                 ...DEFAULT_SETTINGS,
                 title: fallback.title,
                 subject: fallback.subject,
+                formLevel: fallback.formLevel,
                 questionCount: fallback.questionCount,
               }
             : DEFAULT_SETTINGS,
@@ -856,18 +888,29 @@ export default function App() {
     ],
   );
 
-  const createNewTask = useCallback(async () => {
+  const createNewTask = useCallback(async (formLevel: string, subject: string) => {
     if (processing || taskBusy || importProgress.active) return;
     setTaskBusy(true);
     try {
       if (activeTaskId) {
         await saveTaskSession(activeTaskId, buildSession()).catch(() => undefined);
       }
-      const meta = createTaskMeta(uid());
+      // Replace an unused task instead of leaving an empty entry behind.
+      const current = tasks.find((task) => task.id === activeTaskId);
+      const replaceCurrent =
+        Boolean(activeTaskId) &&
+        sheets.length === 0 &&
+        !current?.title.trim();
+      if (replaceCurrent && activeTaskId) {
+        await deleteTaskSession(activeTaskId).catch(() => undefined);
+      }
+      const meta = createTaskMeta(uid(), '', subject, formLevel);
       for (const sheet of sheets) URL.revokeObjectURL(sheet.previewUrl);
       setSheets([]);
       setSettings({
         ...DEFAULT_SETTINGS,
+        formLevel,
+        subject,
         date: new Date().toISOString().slice(0, 10),
       });
       setOverrides({});
@@ -877,9 +920,13 @@ export default function App() {
       setShowManager(true);
       setSaveState('idle');
       setActiveTab('scores');
-      setTasks((prev) => [...prev, meta]);
+      setTasks((prev) =>
+        replaceCurrent && activeTaskId
+          ? [...prev.filter((task) => task.id !== activeTaskId), meta]
+          : [...prev, meta],
+      );
       setActiveTaskId(meta.id);
-      showToast('已建立新任務；舊任務可從上方的任務選單切換。', 'success');
+      showToast('已建立新任務；請上載答題紙。', 'success');
     } finally {
       setTaskBusy(false);
     }
@@ -891,7 +938,37 @@ export default function App() {
     sheets,
     showToast,
     taskBusy,
+    tasks,
   ]);
+
+  const requestNewTask = useCallback(() => {
+    if (processing || taskBusy || importProgress.active) return;
+    setPendingFiles([]);
+    setSetupMode('new');
+  }, [importProgress.active, processing, taskBusy]);
+
+  const cancelSetup = useCallback(() => {
+    setSetupMode(null);
+    setPendingFiles([]);
+  }, []);
+
+  const confirmSetup = useCallback(
+    (formLevel: string, subject: string) => {
+      const mode = setupMode;
+      const files = pendingFiles;
+      setSetupMode(null);
+      setPendingFiles([]);
+      if (mode === 'new') {
+        void createNewTask(formLevel, subject);
+        return;
+      }
+      if (mode === 'upload' && files.length) {
+        setSettings((prev) => ({ ...prev, formLevel, subject }));
+        void addFiles(files);
+      }
+    },
+    [addFiles, createNewTask, pendingFiles, setupMode],
+  );
 
   const clearCurrentSheets = useCallback(() => {
     if (processing || importProgress.active || sheets.length === 0) return;
@@ -1026,22 +1103,13 @@ export default function App() {
         sheetCount={sheets.length}
         saveState={saveState}
         processing={processing || taskBusy || importProgress.active}
+        tasks={tasks}
+        activeTaskId={activeTaskId}
+        onSwitchTask={(id) => void switchTask(id)}
+        onNewTask={requestNewTask}
+        onDeleteTask={() => void deleteCurrentTask()}
+        taskDisabled={!hydrated || processing || taskBusy || importProgress.active}
       />
-
-      {(sheets.length > 0 || tasks.length > 1) && (
-        <TaskBar
-          tasks={tasks}
-          activeTaskId={activeTaskId}
-          formLevel={settings.formLevel}
-          subject={settings.subject}
-          onSwitch={(id) => void switchTask(id)}
-          onNew={() => void createNewTask()}
-          onDelete={() => void deleteCurrentTask()}
-          onFormLevelChange={(formLevel) => updateSettings({ formLevel })}
-          onSubjectChange={(subject) => updateSettings({ subject })}
-          disabled={!hydrated || processing || taskBusy || importProgress.active}
-        />
-      )}
 
       <main>
         {(showManager || sheets.length === 0) && (
@@ -1050,7 +1118,7 @@ export default function App() {
             processing={processing}
             progress={progress}
             importProgress={importProgress}
-            onFiles={addFiles}
+            onFiles={handleFiles}
             onRemove={removeSheet}
             onMove={moveSheet}
             onSetKey={setKeySheet}
@@ -1187,6 +1255,16 @@ export default function App() {
             showToast('已清除答案卷的手動修正。', 'success');
           }}
           onClose={() => setKeyEditorOpen(false)}
+        />
+      )}
+
+      {setupMode && (
+        <TaskSetupModal
+          mode={setupMode}
+          initialFormLevel={settings.formLevel}
+          initialSubject={setupMode === 'new' ? '' : settings.subject}
+          onCancel={cancelSetup}
+          onConfirm={confirmSetup}
         />
       )}
 

@@ -1,15 +1,36 @@
-import { CheckCircle2, Loader2, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, Loader2, Plus, ShieldCheck, Trash2 } from 'lucide-react';
+import type { TaskMeta } from '../types';
 
 interface HeaderProps {
   sheetCount: number;
   saveState: 'idle' | 'saving' | 'saved' | 'error';
   processing: boolean;
+  tasks: TaskMeta[];
+  activeTaskId: string | null;
+  onSwitchTask: (id: string) => void;
+  onNewTask: () => void;
+  onDeleteTask: () => void;
+  taskDisabled?: boolean;
+}
+
+function taskLabel(task: TaskMeta, index: number): string {
+  const parts = [task.formLevel.trim(), task.subject.trim()].filter(Boolean);
+  if (parts.length) return parts.join(' · ');
+  const title = task.title.trim();
+  if (title) return title;
+  return `任務 ${index + 1}`;
 }
 
 export default function Header({
   sheetCount,
   saveState,
   processing,
+  tasks,
+  activeTaskId,
+  onSwitchTask,
+  onNewTask,
+  onDeleteTask,
+  taskDisabled = false,
 }: HeaderProps) {
   return (
     <header className="site-header">
@@ -23,7 +44,52 @@ export default function Header({
           <span>答題紙批改</span>
         </div>
       </div>
+
       <div className="header-right">
+        <div className="header-task">
+          <span className="header-task-label">目前任務</span>
+          <select
+            className="task-select"
+            value={activeTaskId ?? ''}
+            onChange={(event) => onSwitchTask(event.target.value)}
+            disabled={taskDisabled || tasks.length === 0}
+            aria-label="切換目前任務"
+          >
+            {tasks.length === 0 ? (
+              <option value="">載入中…</option>
+            ) : (
+              tasks
+                .filter((task) => task.sheetCount > 0 || task.id === activeTaskId)
+                .map((task) => (
+                  <option key={task.id} value={task.id}>
+                    {taskLabel(task, tasks.indexOf(task))}
+                    {task.sheetCount > 0 ? `（${task.sheetCount} 張）` : '（空白）'}
+                  </option>
+                ))
+            )}
+          </select>
+        </div>
+
+        <button
+          className="btn primary small new-task-btn"
+          onClick={onNewTask}
+          disabled={taskDisabled}
+          title="建立新任務（需選年級及科目）"
+        >
+          <Plus size={15} />
+          <span>新任務</span>
+        </button>
+
+        <button
+          className="icon-btn task-delete"
+          onClick={onDeleteTask}
+          disabled={taskDisabled || tasks.length === 0}
+          title="刪除目前任務"
+          aria-label="刪除目前任務"
+        >
+          <Trash2 size={16} />
+        </button>
+
         <div className="privacy-pill" title="所有影像只在你的瀏覽器中處理">
           <ShieldCheck size={15} />
           <span>本機處理 · 不上傳</span>

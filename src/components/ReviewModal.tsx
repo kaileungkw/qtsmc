@@ -176,7 +176,7 @@ export default function ReviewModal({
               <div className="canvas-legend">
                 <span className="lg correct">正確</span>
                 <span className="lg wrong">答錯</span>
-                <span className="lg low">低信心</span>
+                <span className="lg low" title="系統未能確定這個答案，請覆核">存疑</span>
                 <span className="lg blank">未填</span>
                 <span className="lg multi">多選</span>
               </div>
@@ -295,7 +295,7 @@ export default function ReviewModal({
                   <strong>{multiCount}</strong>
                 </div>
                 <div>
-                  <span>低信心</span>
+                  <span>存疑</span>
                   <strong>{lowCount}</strong>
                 </div>
               </div>
@@ -319,7 +319,7 @@ export default function ReviewModal({
                 <span>
                   {overrideCount > 0
                     ? `已手動修正 ${overrideCount} 題`
-                    : '可修改任何答案；低信心題已標示'}
+                    : '可修改任何答案；存疑題已標示'}
                 </span>
               </div>
               <div className="answers-head-actions">
@@ -349,7 +349,7 @@ export default function ReviewModal({
                     <strong>Q{row.q}</strong>
                     <span className={row.detected?.status === 'multi' ? 'multi' : ''}>
                       {row.detected?.status === 'low'
-                        ? '低信心'
+                        ? '存疑'
                         : row.detected?.status === 'multi'
                           ? row.multiLabel ?? '多選'
                           : ''}

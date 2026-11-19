@@ -8,12 +8,18 @@ export interface TaskIndex {
   activeTaskId: string | null;
 }
 
-export function createTaskMeta(id: string, title = '', subject = ''): TaskMeta {
+export function createTaskMeta(
+  id: string,
+  title = '',
+  subject = '',
+  formLevel = '',
+): TaskMeta {
   const now = Date.now();
   return {
     id,
     title,
     subject,
+    formLevel,
     sheetCount: 0,
     questionCount: 0,
     createdAt: now,
@@ -29,9 +35,16 @@ export function loadTaskIndex(): TaskIndex {
     const parsed = JSON.parse(raw) as TaskIndex;
     if (!parsed || !Array.isArray(parsed.tasks)) return { tasks: [], activeTaskId: null };
     return {
-      tasks: parsed.tasks.filter(
-        (task) => task && typeof task.id === 'string' && task.id.length > 0,
-      ),
+      tasks: parsed.tasks
+        .filter((task) => task && typeof task.id === 'string' && task.id.length > 0)
+        .map((task) => ({
+          ...task,
+          title: typeof task.title === 'string' ? task.title : '',
+          subject: typeof task.subject === 'string' ? task.subject : '',
+          formLevel: typeof task.formLevel === 'string' ? task.formLevel : '',
+          sheetCount: Number(task.sheetCount) || 0,
+          questionCount: Number(task.questionCount) || 0,
+        })),
       activeTaskId:
         typeof parsed.activeTaskId === 'string' ? parsed.activeTaskId : null,
     };
