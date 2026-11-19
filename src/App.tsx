@@ -13,6 +13,7 @@ import { clearSession, loadSession, saveSession } from './lib/storage';
 import { downloadBackup, parseBackupFile } from './lib/export';
 import type {
   Analysis,
+  NamingEntry,
   AnswerOverrides,
   AnswerValue,
   Detection,
@@ -29,7 +30,7 @@ const DEFAULT_SETTINGS: Settings = {
   className: '',
   date: today,
   passMark: 50,
-  includeKey: true,
+  includeKey: false,
   marksPerQuestion: 1,
   questionCount: 0,
   autoQuestionCount: true,
@@ -93,6 +94,30 @@ function makeSheet(blob: Blob, fileName: string, index: number): RuntimeSheet {
 function placeholderImage(): Blob {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1200"><rect width="100%" height="100%" fill="#f5f1e8"/><text x="50%" y="46%" font-family="sans-serif" font-size="30" fill="#7a6f5e" text-anchor="middle">備份未包含原始影像</text><text x="50%" y="52%" font-family="sans-serif" font-size="18" fill="#9b907f" text-anchor="middle">成績與答案資料已載入</text></svg>`;
   return new Blob([svg], { type: 'image/svg+xml' });
+}
+
+function headerPatch(
+  sheet: RuntimeSheet,
+  detection: Detection,
+): Partial<Pick<RuntimeSheet, 'className' | 'seatNo'>> {
+  const header = detection.header;
+  if (!header) return {};
+  const previous = sheet.detection?.header;
+  const classNameEdited = Boolean(
+    previous?.className && sheet.className && sheet.className !== previous.className,
+  );
+  const seatEdited = Boolean(
+    previous?.seatNo && sheet.seatNo && sheet.seatNo !== previous.seatNo,
+  );
+  return {
+    className:
+      !classNameEdited && header.className ? header.className : sheet.className,
+    // If the header exists but one field could not be read, clear the old
+    // placeholder rather than showing a misleading default seat number.
+    seatNo: seatEdited
+      ? sheet.seatNo
+      : header.seatNo ?? (header.className ? '' : sheet.seatNo),
+  };
 }
 
 export default function App() {
@@ -355,10 +380,12 @@ export default function App() {
       setSheets(updated);
       try {
         const detection = await runWorkerJob(worker, sheet.blob);
+        const patch = detection.ok ? headerPatch(sheet, detection) : {};
         updated = updated.map((s) =>
           s.id === sheet.id
             ? {
                 ...s,
+                ...patch,
                 status: detection.ok ? 'done' : 'error',
                 detection,
                 error: detection.ok ? undefined : detection.warnings[0],
@@ -477,15 +504,40 @@ export default function App() {
     setSettings((prev) => ({ ...prev, ...patch }));
   }, []);
 
-  const applyNames = useCallback((names: string[]) => {
-    setSheets((prev) =>
-      prev.map((sheet, index) => ({
-        ...sheet,
-        name: names[index]?.trim() || sheet.name,
-      })),
-    );
+  const applyNames = useCallback((entries: NamingEntry[]) => {
+    let unmatched = 0;
+    setSheets((prev) => {
+      const next = prev.map((sheet) => ({ ...sheet }));
+      const used = new Set<string>();
+      for (const entry of entries.filter((e) => e.seatNo)) {
+        const target = next.find(
+          (sheet) => sheet.seatNo === entry.seatNo && !used.has(sheet.id),
+        );
+        if (target) {
+          target.name = entry.name;
+          used.add(target.id);
+        } else {
+          unmatched++;
+        }
+      }
+      const unnumbered = entries.filter((e) => !e.seatNo);
+      let nextIndex = 0;
+      for (const entry of unnumbered) {
+        while (nextIndex < next.length && used.has(next[nextIndex].id)) nextIndex++;
+        if (nextIndex < next.length) {
+          next[nextIndex].name = entry.name;
+          used.add(next[nextIndex].id);
+          nextIndex++;
+        }
+      }
+      return next;
+    });
     setNamingOpen(false);
-    showToast('已套用姓名名單。', 'success');
+    if (unmatched > 0) {
+      showToast(`已套用名單，但有 ${unmatched} 個學號找不到對應答題紙。`, 'warning');
+    } else {
+      showToast('已套用姓名名單。', 'success');
+    }
   }, [showToast]);
 
   const resetWorkspace = useCallback(async () => {
@@ -789,7 +841,12 @@ export default function App() {
 
       {namingOpen && (
         <NamingModal
-          names={sheets.map((s) => s.name)}
+          students={sheets.map((s) => ({
+            id: s.id,
+            name: s.name,
+            className: s.className,
+            seatNo: s.seatNo,
+          }))}
           onApply={applyNames}
           onClose={() => setNamingOpen(false)}
         />

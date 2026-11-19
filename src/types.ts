@@ -25,6 +25,16 @@ export interface DetectedRow {
   cells: CellMark[];
 }
 
+export interface HeaderInfo {
+  level?: number;
+  classLetter?: string;
+  classNo?: string;
+  className?: string;
+  seatNo?: string;
+  candidateNo?: string;
+  confidence: number;
+}
+
 export interface Detection {
   ok: boolean;
   width: number;
@@ -33,7 +43,13 @@ export interface Detection {
   frames: Frame[];
   rows: DetectedRow[];
   warnings: string[];
+  header?: HeaderInfo;
   elapsedMs: number;
+}
+
+export interface NamingEntry {
+  seatNo?: string;
+  name: string;
 }
 
 export type SheetStatus = 'idle' | 'processing' | 'done' | 'error';

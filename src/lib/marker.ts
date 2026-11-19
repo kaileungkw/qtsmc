@@ -4,6 +4,7 @@ import type {
   DetectedRow,
   Detection,
   Frame,
+  HeaderInfo,
 } from '../types';
 
 /**
@@ -312,6 +313,7 @@ interface CellScore {
   ink: number;
   base: number;
   faint: number;
+  median: number;
   cx: number;
   cy: number;
   ring: number;
@@ -374,6 +376,7 @@ function measureBubble(
     ink: Math.max(base, faint),
     base,
     faint,
+    median,
     cx,
     cy,
     ring: best.ring,
@@ -534,6 +537,134 @@ function isUpsideDown(
   return below >= 2 && above === 0;
 }
 
+
+/** Read Level / Class / Class No from the printed table above the answer grid. */
+export function readHeaderFields(
+  gray: Uint8Array,
+  width: number,
+  height: number,
+  frame: Frame,
+): HeaderInfo | undefined {
+  const paper = percentile90(gray, width, frame);
+  const thr = Math.max(120, Math.min(210, paper - 55));
+  const bw = BUBBLE_W_FRAC * frame.w;
+  const bh = BUBBLE_H_FRAC * frame.h;
+  const hw = Math.max(6, Math.round(bw / 2));
+  const hh = Math.max(4, Math.round(bh / 2));
+  const y0 = frame.y - 0.461 * frame.h;
+  const pitch = 0.0458 * frame.h;
+  const levelX = frame.x - 0.507 * frame.w;
+  const classX = frame.x - 0.055 * frame.w;
+  const noTensX = frame.x + 0.367 * frame.w;
+  const noUnitsX = frame.x + 0.592 * frame.w;
+  if (y0 < 20 || levelX < 0 || noUnitsX > width) return undefined;
+
+  const centers: { cx: number; cy: number }[] = [];
+  for (let row = 0; row < 6; row++) {
+    centers.push({ cx: levelX, cy: y0 + row * pitch });
+  }
+  for (let row = 0; row < 4; row++) {
+    centers.push({ cx: classX, cy: y0 + row * pitch });
+  }
+  for (let row = 0; row < 10; row++) {
+    centers.push({ cx: noTensX, cy: y0 + row * pitch });
+    centers.push({ cx: noUnitsX, cy: y0 + row * pitch });
+  }
+  // Verify the printed header table is actually present; a cropped image must
+  // not accidentally read background paper as a class.
+  let printed = 0;
+  for (const center of centers) {
+    const cx = Math.round(center.cx);
+    const cy = Math.round(center.cy);
+    let darkest = 255;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        darkest = Math.min(darkest, ringMean(gray, width, height, cx + dx, cy + dy, hw, hh));
+      }
+    }
+    if (darkest < paper - 30) printed++;
+  }
+  if (printed < 18) return undefined;
+
+  const measure = (cx: number, cy: number): number => {
+    const measured = measureBubble(
+      gray,
+      width,
+      height,
+      Math.round(cx),
+      Math.round(cy),
+      bw,
+      bh,
+      paper,
+      thr,
+    );
+    // Header bubbles are sometimes filled solid, and sometimes marked with a
+    // couple of pencil strokes. Use the normal ink measure; the printed table
+    // support check above already rejects images without a header.
+    return measured.ink;
+  };
+
+  const pickScores = (
+    scores: number[],
+    minInk = 0.24,
+    minMargin = 0.05,
+  ): { index: number; score: number; margin: number } | undefined => {
+    const order = scores
+      .map((score, index) => ({ score, index }))
+      .sort((a, b) => b.score - a.score);
+    const top = order[0];
+    const second = order[1] ?? { score: 0, index: -1 };
+    if (top.score < minInk) return undefined;
+    if (top.score - second.score < minMargin) return undefined;
+    return { index: top.index, score: top.score, margin: top.score - second.score };
+  };
+
+  const levelPoints = centers.slice(0, 6);
+  const classPoints = centers.slice(6, 10);
+  const tensPoints = centers.slice(10).filter((_, i) => i % 2 === 0);
+  const unitsPoints = centers.slice(10).filter((_, i) => i % 2 === 1);
+  const levelScores = levelPoints.map((p) => measure(p.cx, p.cy));
+  const classScores = classPoints.map((p) => measure(p.cx, p.cy));
+  const tensScores = tensPoints.map((p) => measure(p.cx, p.cy));
+  const unitsScores = unitsPoints.map((p) => measure(p.cx, p.cy));
+  const levelPick = pickScores(levelScores, 0.18);
+  const classPick = pickScores(classScores, 0.18);
+  const tensPick = pickScores(tensScores, 0.13, 0.005);
+  const unitsPick = pickScores(unitsScores, 0.15, 0.04);
+
+  if (!levelPick && !classPick && !tensPick && !unitsPick) return undefined;
+  const level = levelPick ? levelPick.index + 1 : undefined;
+  const classLetter = classPick ? 'ABCD'[classPick.index] : undefined;
+  let classNo: string | undefined;
+  if (tensPick || unitsPick) {
+    const tens = tensPick?.index;
+    const units = unitsPick?.index;
+    if (tens !== undefined && units !== undefined) classNo = `${tens}${units}`;
+    else if (units !== undefined) classNo = `0${units}`;
+    // Only the tens digit is incomplete; do not invent a trailing zero.
+  }
+  const className = level && classLetter ? `${level}${classLetter}` : undefined;
+  let seatNo: string | undefined;
+  if (level && classPick && classNo) {
+    const candidate = level * 1000 + (classPick.index + 1) * 100 + Number(classNo);
+    seatNo = String(candidate).padStart(4, '0');
+  }
+  const confidence =
+    (levelPick ? 1 : 0) * 0.4 +
+    (classPick ? 1 : 0) * 0.35 +
+    (unitsPick ? 1 : 0) * 0.15 +
+    (tensPick ? 1 : 0) * 0.1;
+  return {
+    level,
+    classLetter,
+    classNo,
+    className,
+    seatNo,
+    candidateNo: seatNo,
+    confidence: Math.round(confidence * 100) / 100,
+  };
+}
+
 export function analyseGray(
   gray: Uint8Array,
   width: number,
@@ -603,6 +734,7 @@ export function analyseGray(
       elapsedMs: Math.round(performance.now() - started),
     };
   }
+  const header = frames.length ? readHeaderFields(gray, width, height, frames[0]) : undefined;
   const rows: DetectedRow[] = [];
   for (let i = 0; i < frames.length; i++) {
     rows.push(...readFrame(gray, width, height, frames[i], i));
@@ -621,6 +753,7 @@ export function analyseGray(
     frames,
     rows,
     warnings,
+    header,
     elapsedMs: Math.round(performance.now() - started),
   };
 }

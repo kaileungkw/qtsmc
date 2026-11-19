@@ -211,6 +211,14 @@ export default function Results({
   const sheetWarnings = sheets
     .flatMap((s) => s.detection?.warnings ?? [])
     .filter((warning, index, list) => list.indexOf(warning) === index);
+  const studentRows = analysis.students.filter((s) => !s.isKey);
+  const missingSeat = studentRows.filter((s) => !s.seatNo.trim()).length;
+  const seatCounts = new Map<string, number>();
+  for (const student of studentRows) {
+    const seat = student.seatNo.trim();
+    if (seat) seatCounts.set(seat, (seatCounts.get(seat) ?? 0) + 1);
+  }
+  const duplicateSeats = [...seatCounts.entries()].filter(([, count]) => count > 1);
 
   return (
     <section className="results-section" aria-labelledby="results-title">
@@ -255,6 +263,25 @@ export default function Results({
             </div>
             <button className="notice-action" onClick={onOpenManager}>
               檢查 <ArrowRight size={14} />
+            </button>
+          </div>
+        )}
+        {(missingSeat > 0 || duplicateSeats.length > 0) && (
+          <div className="notice warning">
+            <AlertTriangle size={17} />
+            <div>
+              <strong>班別 / 學號需要覆核</strong>
+              <span>
+                {missingSeat > 0 && `${missingSeat} 張未能讀取學號。`}
+                {duplicateSeats.length > 0 &&
+                  `${duplicateSeats.length} 個學號重複（${duplicateSeats
+                    .map(([seat]) => seat)
+                    .join('、')}）。`}
+                左上角的 Level / Class / Class No 若填得太淡或寫在格子上方，系統可能讀不到；可直接在成績表修改。
+              </span>
+            </div>
+            <button className="notice-action" onClick={() => onTabChange('scores')}>
+              查看 <ArrowRight size={14} />
             </button>
           </div>
         )}
