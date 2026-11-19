@@ -142,7 +142,11 @@ export function collectVerticalSegments(
   width: number,
   height: number,
 ): Segment[] {
-  const minLen = Math.floor(height * 0.28);
+  // Automatic document feeders can skew a page by ~0.2°. A long frame line
+  // then drifts across a few columns, so no single column contains the whole
+  // line. Keep shorter runs and let mergeSegments join them; frameGridSupport
+  // still rejects table cells and other false frames.
+  const minLen = Math.floor(height * 0.12);
   const segs: Segment[] = [];
   for (let x = 0; x < width; x++) {
     let y = 0;
