@@ -176,7 +176,7 @@ export default function ReviewModal({
             <div className="canvas-toolbar">
               <div className="canvas-legend">
                 <span className="lg correct">正確</span>
-                <span className="lg wrong">錯誤</span>
+                <span className="lg wrong">答錯</span>
                 <span className="lg low">低信心</span>
                 <span className="lg blank">未填</span>
                 <span className="lg multi">多選</span>
@@ -224,7 +224,7 @@ export default function ReviewModal({
               </div>
             </div>
             <div className="canvas-hint">
-              <Eye size={13} /> 橙色框＝低信心；「增強對比」只影響顯示。
+              <Eye size={13} /> 「增強對比」只影響畫面，不影響計分。
             </div>
           </div>
 
