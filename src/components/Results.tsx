@@ -5,7 +5,6 @@ import {
   Crown,
   Download,
   Grid3X3,
-  Loader2,
   PencilLine,
   ScanLine,
   Settings2,
@@ -51,8 +50,6 @@ interface ResultsProps {
   onToast: (message: string, kind?: ToastKind) => void;
   autoCount: number;
   rosterStatus: 'loading' | 'ready' | 'error';
-  rosterCount: number;
-  rosterFromCache: boolean;
   onRefreshRoster: () => void;
 }
 
@@ -212,8 +209,6 @@ export default function Results({
   onToast,
   autoCount,
   rosterStatus,
-  rosterCount,
-  rosterFromCache,
   onRefreshRoster,
 }: ResultsProps) {
   const failed = sheets.filter((s) => !s.detection?.ok).length;
@@ -341,37 +336,14 @@ export default function Results({
           </p>
         </div>
         <div className="results-actions">
-          <button
-            className={`roster-pill ${rosterStatus}`}
-            onClick={onRefreshRoster}
-            disabled={rosterStatus === 'loading'}
-            title={
-              rosterStatus === 'ready'
-                ? rosterFromCache
-                  ? '使用本機快取的全校名單；按此更新'
-                  : '按此重新讀取全校名單'
-                : '自動讀取學校 Google Sheet 的全校名單'
-            }
-          >
-            {rosterStatus === 'loading' ? (
-              <Loader2 size={14} className="spin" />
-            ) : (
-              <Users size={14} />
-            )}
-            {rosterStatus === 'ready'
-              ? `全校名單 ${rosterCount}`
-              : rosterStatus === 'loading'
-                ? '名單載入中'
-                : '名單未載入 · 重試'}
-            {rosterStatus === 'ready' && rosterFromCache && (
-              <i className="cache-dot" aria-label="使用本機快取" />
-            )}
-          </button>
           <button className="btn ghost small" onClick={onOpenNaming}>
             <PencilLine size={15} /> 批次命名
           </button>
           <button className="btn secondary small" onClick={onOpenKeyEditor}>
             <Crown size={15} /> 答案卷
+          </button>
+          <button className="btn primary small" onClick={() => onTabChange('export')}>
+            <Download size={15} /> 匯出成績
           </button>
         </div>
       </div>
@@ -444,6 +416,7 @@ export default function Results({
             sheets={sheets}
             onReview={onReview}
             onEditSheet={onEditSheet}
+            onExport={() => onTabChange('export')}
           />
         )}
         {activeTab === 'questions' && (

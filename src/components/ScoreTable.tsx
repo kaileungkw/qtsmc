@@ -5,6 +5,7 @@ import {
   Check,
   ChevronDown,
   Crown,
+  Download,
   Eye,
   Search,
   Users,
@@ -21,6 +22,7 @@ interface ScoreTableProps {
     id: string,
     patch: Partial<Pick<RuntimeSheet, 'name' | 'className' | 'seatNo'>>,
   ) => void;
+  onExport: () => void;
 }
 
 type ScoreFilter = 'all' | 'review' | 'blank' | 'multi';
@@ -40,6 +42,7 @@ export default function ScoreTable({
   sheets,
   onReview,
   onEditSheet,
+  onExport,
 }: ScoreTableProps) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<ScoreFilter>('all');
@@ -144,6 +147,10 @@ export default function ScoreTable({
           </select>
           <ChevronDown size={13} className="select-caret" />
         </label>
+        <button className="tools-btn table-export-btn" onClick={onExport} title="匯出成績">
+          <Download size={15} />
+          <span>匯出</span>
+        </button>
       </div>
 
       <div className="table-legend">

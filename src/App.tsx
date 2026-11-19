@@ -248,7 +248,6 @@ export default function App() {
   const toastTimer = useRef<number | null>(null);
   const [roster, setRoster] = useState<RosterData | null>(null);
   const [rosterStatus, setRosterStatus] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [rosterFromCache, setRosterFromCache] = useState(false);
   const rosterRequest = useRef(0);
   const [tasks, setTasks] = useState<TaskMeta[]>([]);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
@@ -269,7 +268,6 @@ export default function App() {
         const data = await loadRoster(force);
         if (requestId !== rosterRequest.current) return;
         setRoster(data);
-        setRosterFromCache(data.fromCache);
         setRosterStatus('ready');
         if (force) {
           showToast(`全校名單已更新（${data.entries.length} 人）。`, 'success');
@@ -1207,8 +1205,6 @@ export default function App() {
             onToast={showToast}
             autoCount={autoCount}
             rosterStatus={rosterStatus}
-            rosterCount={roster?.entries.length ?? 0}
-            rosterFromCache={rosterFromCache}
             onRefreshRoster={() => void loadRosterNow(true)}
           />
         )}
