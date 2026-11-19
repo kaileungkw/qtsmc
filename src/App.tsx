@@ -1180,6 +1180,15 @@ export default function App() {
       />
 
       <main>
+        {sheets.length === 0 && (
+          <div className="intro-strip">
+            <p className="intro-title">QTSMC 答題紙批改工具</p>
+            <p className="intro-line">
+              毋須安裝或登入；所有掃描頁分析及計分均於瀏覽器內完成，試卷影像及成績僅存於使用者裝置，不會上傳至任何伺服器。
+            </p>
+          </div>
+        )}
+
         {(showManager || sheets.length === 0) && (
           <Uploader
             sheets={sheets}
