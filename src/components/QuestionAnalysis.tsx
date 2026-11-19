@@ -172,9 +172,9 @@ export default function QuestionAnalysis({ analysis, settings }: QuestionAnalysi
           <thead>
             <tr>
               <th className="q-th">題號</th>
-              <th>答案</th>
+              <th className="answer-th">答案</th>
               <th className="wide-th">答對率</th>
-              <th className="small-th">答對</th>
+              <th className="small-th correct-th">答對</th>
               {OPTION_KEYS.map((opt) => (
                 <th key={opt} className={`opt-th opt-${opt}`}>
                   {opt}
@@ -182,7 +182,7 @@ export default function QuestionAnalysis({ analysis, settings }: QuestionAnalysi
               ))}
               <th className="opt-th opt-blank">未填</th>
               <th className="opt-th opt-multi">多選</th>
-              <th className="small-th">有效作答</th>
+              <th className="small-th valid-th">有效作答</th>
             </tr>
           </thead>
           <tbody>
@@ -191,7 +191,7 @@ export default function QuestionAnalysis({ analysis, settings }: QuestionAnalysi
                 <td className="q-th">
                   <strong>Q{stat.q}</strong>
                 </td>
-                <td>
+                <td className="answer-th">
                   <span className={`answer-key ${stat.keyValid ? '' : 'invalid'}`}>
                     {stat.keyValid ? stat.key : '?'}
                   </span>

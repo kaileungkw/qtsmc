@@ -2794,6 +2794,7 @@ main {
 
 .analysis-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
   min-width: 860px;
@@ -2825,7 +2826,7 @@ main {
 }
 
 .analysis-table .q-th {
-  width: 52px;
+  width: 6%;
   text-align: left;
   padding-left: 10px;
 }
@@ -2834,13 +2835,28 @@ main {
   font-size: 10.5px;
 }
 
+.analysis-table .answer-th {
+  width: 6%;
+}
+
 .analysis-table .wide-th {
-  width: 180px;
+  width: 30%;
+}
+
+.analysis-table .correct-th {
+  width: 7%;
+}
+
+.analysis-table .opt-th {
+  width: 6.5%;
 }
 
 .analysis-table .small-th {
-  width: 60px;
   color: var(--ink-2);
+}
+
+.analysis-table .valid-th {
+  width: 12%;
 }
 
 .answer-key {
