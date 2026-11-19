@@ -445,6 +445,27 @@ export default function App() {
     saveTaskIndex({ tasks, activeTaskId });
   }, [tasks, activeTaskId, hydrated]);
 
+  // If an export failed because a deployment replaced a lazy-loaded chunk,
+  // ExportPanel reloads the page and leaves this flag. Re-open the export tab
+  // so the teacher only needs to press the download button once more.
+  useEffect(() => {
+    if (!hydrated) return;
+    let pending: string | null = null;
+    try {
+      pending = sessionStorage.getItem('qtsmc-pending-export');
+    } catch {
+      return;
+    }
+    if (pending !== 'xlsx' && pending !== 'csv') return;
+    try {
+      sessionStorage.removeItem('qtsmc-pending-export');
+    } catch {
+      // Ignore storage restrictions; the tab is still opened below.
+    }
+    setActiveTab('export');
+    showToast('網站已更新，請再按一次下載。', 'info');
+  }, [hydrated, showToast]);
+
   // Load images and PDFs. PDF pages become individual sheets.
   const addFiles = useCallback(
     async (files: File[]) => {

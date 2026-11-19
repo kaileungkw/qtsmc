@@ -37,6 +37,11 @@ interface ExportPanelProps {
   autoCount: number;
 }
 
+function isStaleAssetError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|ChunkLoadError/i.test(message);
+}
+
 export default function ExportPanel({
   analysis,
   settings,
@@ -72,6 +77,22 @@ export default function ExportPanel({
         'success',
       );
     } catch (error) {
+      if (isStaleAssetError(error)) {
+        const reload = window.confirm(
+          '網站已更新，下載元件需要重新載入。現有任務會保留；重新整理後再按一次下載。要現在重新整理嗎？',
+        );
+        if (reload) {
+          try {
+            sessionStorage.setItem('qtsmc-pending-export', kind);
+          } catch {
+            // Reload still recovers the current deployment.
+          }
+          window.location.reload();
+        } else {
+          onToast('請重新整理頁面後再下載。', 'warning');
+        }
+        return;
+      }
       onToast(
         `匯出失敗：${error instanceof Error ? error.message : '未知錯誤'}`,
         'error',

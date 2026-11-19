@@ -163,6 +163,7 @@ src/
 - 老師上載的掃描影像**不會經 Vercel**；辨識、計分及 Excel/CSV 產生全部在瀏覽器內完成，所以不會消耗 Vercel 的 Function 執行時間。
 - 第一次開啟約下載 1–2 MB 程式（之後由瀏覽器快取）；ExcelJS、PDF.js 等會按需要才載入。以校內幾十位老師、每班幾十份卷的使用量，Vercel 免費 Hobby 計劃的每月 bandwidth 一般足夠。
 - 如學校大量使用或需要自訂網域／密碼保護，可再考慮 Vercel Pro 或把 `dist/` 放到校內伺服器；程式本身不需要 Vercel 才能運作。
+- 如果網站已部署新版本，而你仍開住舊分頁，舊版的下載程式檔可能已不在伺服器（表現為 `Failed to fetch dynamically imported module`）。系統會提示重新整理；現有任務保存在本機，重新整理後會自動返回「匯出」頁，再按一次下載即可。
 
 ## 私隱
 
