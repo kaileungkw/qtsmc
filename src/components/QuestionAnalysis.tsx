@@ -37,6 +37,7 @@ function OptionCell({ option, stat }: { option: 'A' | 'B' | 'C' | 'D' | 'blank' 
 export default function QuestionAnalysis({ analysis, settings }: QuestionAnalysisProps) {
   const [sort, setSort] = useState<Sort>('q');
   const [onlyWeak, setOnlyWeak] = useState(false);
+  const [showKey, setShowKey] = useState(false);
   const count = settings.questionCount;
   const denominator = analysis.included.length;
 
@@ -62,7 +63,7 @@ export default function QuestionAnalysis({ analysis, settings }: QuestionAnalysi
   return (
     <div className="question-analysis" id="question-analysis">
       <div className="analysis-top">
-        <div className="key-strip-card">
+        <div className={`key-strip-card ${showKey ? 'key-open' : ''}`}>
           <div className="key-strip-head">
             <div>
               <span className="section-kicker">ANSWER KEY</span>
@@ -72,27 +73,37 @@ export default function QuestionAnalysis({ analysis, settings }: QuestionAnalysi
               <Target size={14} />
               以答案卷為準
             </span>
+            <button
+              type="button"
+              className="key-strip-toggle"
+              aria-expanded={showKey}
+              onClick={() => setShowKey((value) => !value)}
+            >
+              {showKey ? '收起' : '查看答案'}
+            </button>
           </div>
-          <div className="key-strip">
-            {analysis.questions.map((stat) => (
-              <span
-                key={stat.q}
-                className={`key-chip ${!stat.keyValid ? 'invalid' : ''}`}
-                title={`Q${stat.q}：${stat.keyValid ? stat.key : '未設定'}`}
-              >
-                <b>{stat.q}</b>
-                <i>{stat.keyValid ? stat.key : '?'}</i>
-              </span>
-            ))}
+          <div className="key-strip-body">
+            <div className="key-strip">
+              {analysis.questions.map((stat) => (
+                <span
+                  key={stat.q}
+                  className={`key-chip ${!stat.keyValid ? 'invalid' : ''}`}
+                  title={`Q${stat.q}：${stat.keyValid ? stat.key : '未設定'}`}
+                >
+                  <b>{stat.q}</b>
+                  <i>{stat.keyValid ? stat.key : '?'}</i>
+                </span>
+              ))}
+            </div>
+            <p className="key-strip-note">
+              以 <strong>{denominator}</strong> 位計入學生為分母。
+              {invalid > 0 && (
+                <span className="inline-warning">
+                  <AlertTriangle size={13} /> {invalid} 題未設定答案
+                </span>
+              )}
+            </p>
           </div>
-          <p className="key-strip-note">
-            以 <strong>{denominator}</strong> 位計入學生為分母。
-            {invalid > 0 && (
-              <span className="inline-warning">
-                <AlertTriangle size={13} /> {invalid} 題未設定答案
-              </span>
-            )}
-          </p>
         </div>
         <div className="weak-card">
           <div className="weak-head">
@@ -245,7 +256,7 @@ export default function QuestionAnalysis({ analysis, settings }: QuestionAnalysi
                       key={option}
                       className={`amc-option opt-${option} ${stat.key === option ? 'is-key' : ''}`}
                     >
-                      <span>{option}</span>
+                      <span>{option === 'blank' ? '未填' : option === 'multi' ? '多選' : option}</span>
                       <b>{value.percent.toFixed(0)}%</b>
                       <small>{value.count}</small>
                     </div>
@@ -269,15 +280,6 @@ export default function QuestionAnalysis({ analysis, settings }: QuestionAnalysi
         </div>
       )}
 
-      <div className="analysis-legend">
-        <span><i className="lg-opt A" /> A</span>
-        <span><i className="lg-opt B" /> B</span>
-        <span><i className="lg-opt C" /> C</span>
-        <span><i className="lg-opt D" /> D</span>
-        <span><i className="lg-opt blank" /> 未填</span>
-        <span><i className="lg-opt multi" /> 多選</span>
-        <span className="legend-note">每格百分比 = 選該選項的學生 ÷ 全部計入學生</span>
-      </div>
     </div>
   );
 }
