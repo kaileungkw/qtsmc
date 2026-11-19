@@ -1,11 +1,10 @@
+import { useState } from 'react';
 import {
   AlertTriangle,
-  ArrowRight,
   BarChart3,
   Crown,
   Download,
   Grid3X3,
-  ListChecks,
   Loader2,
   PencilLine,
   ScanLine,
@@ -75,6 +74,7 @@ function Summary({
   keySheet?: RuntimeSheet;
   autoCount: number;
 }) {
+  const [showSide, setShowSide] = useState(false);
   const s = analysis.summary;
   const maxBucket = Math.max(1, ...s.distribution.map((d) => d.count));
   const lowQuestions = [...analysis.questions]
@@ -121,7 +121,15 @@ function Summary({
         </article>
       </div>
 
-      <div className="summary-side">
+      <button
+        type="button"
+        className="summary-more-btn"
+        onClick={() => setShowSide((value) => !value)}
+      >
+        {showSide ? '收起分數分佈與答案卷' : '分數分佈與答案卷'}
+      </button>
+
+      <div className={`summary-side ${showSide ? 'mobile-open' : ''}`}>
         <article className="distribution-card">
           <div className="distribution-head">
             <div>
@@ -154,13 +162,8 @@ function Summary({
             <span>答案卷</span>
           </div>
           <strong>{keySheet?.name || keySheet?.fileName || '未設定'}</strong>
-          <p>
-            共 {settings.questionCount} 題
-            {autoCount > 0 && autoCount === settings.questionCount
-              ? '（按答案卷及全班作答自動判斷）'
-              : '（手動設定）'}
-            。第一張答題紙只作滿分標準，
-            {settings.includeKey ? '已計入統計。' : '不計入統計。'}
+          <p title={autoCount > 0 && autoCount === settings.questionCount ? '系統自動判斷題數' : '手動設定題數'}>
+            {settings.questionCount} 題 · {settings.includeKey ? '計入統計' : '不計入統計'}
           </p>
           {lowQuestions.length > 0 && (
             <div className="weak-list">
@@ -215,16 +218,11 @@ export default function Results({
 }: ResultsProps) {
   const failed = sheets.filter((s) => !s.detection?.ok).length;
   const invalidKeys = analysis.questions.filter((q) => !q.keyValid).length;
-  const flaggedStudents = analysis.included.filter(
-    (s) => s.lowCount > 0 || s.multiCount > 0,
-  ).length;
-  const blankSheets = analysis.included.filter((s) => s.blankCount > 0).length;
   const suggestedStudents = analysis.students.filter(
     (s) =>
       !s.isKey &&
       (s.suggested?.className || s.suggested?.seatNo || s.suggested?.name),
   ).length;
-  const blankCells = analysis.included.reduce((sum, s) => sum + s.blankCount, 0);
   const reviewStudents = analysis.included.filter(
     (s) => s.lowCount > 0 || s.multiCount > 0 || s.blankCount > 0,
   ).length;
@@ -239,6 +237,95 @@ export default function Results({
     if (seat) seatCounts.set(seat, (seatCounts.get(seat) ?? 0) + 1);
   }
   const duplicateSeats = [...seatCounts.entries()].filter(([, count]) => count > 1);
+
+  const attention: {
+    key: string;
+    label: string;
+    count?: number;
+    tone: 'warning' | 'info' | 'error';
+    icon: typeof AlertTriangle;
+    title: string;
+    onClick: () => void;
+  }[] = [];
+  if (failed > 0) {
+    attention.push({
+      key: 'failed',
+      label: '未能辨識',
+      count: failed,
+      tone: 'error',
+      icon: ScanLine,
+      title: '請檢查影像，或改用較清晰的掃描／PDF。',
+      onClick: onOpenManager,
+    });
+  }
+  if (missingSeat > 0 || duplicateSeats.length > 0) {
+    attention.push({
+      key: 'headers',
+      label: '班別／學號',
+      count: missingSeat + duplicateSeats.length,
+      tone: 'warning',
+      icon: AlertTriangle,
+      title: '部分班別／學號未能讀取或重複；可直接在成績表修改。',
+      onClick: () => onTabChange('scores'),
+    });
+  }
+  if (rosterStatus === 'error') {
+    attention.push({
+      key: 'roster',
+      label: '名單未載入',
+      tone: 'warning',
+      icon: AlertTriangle,
+      title: '可重試讀取全校名單，或手動／批次輸入姓名。',
+      onClick: onRefreshRoster,
+    });
+  }
+  if (suggestedStudents > 0) {
+    attention.push({
+      key: 'suggested',
+      label: '系統建議',
+      count: suggestedStudents,
+      tone: 'warning',
+      icon: AlertTriangle,
+      title: '黃色欄位為系統建議，請在成績表確認。',
+      onClick: () => onTabChange('scores'),
+    });
+  }
+  if (invalidKeys > 0) {
+    attention.push({
+      key: 'keys',
+      label: '答案未設定',
+      count: invalidKeys,
+      tone: 'warning',
+      icon: Crown,
+      title: '請在答案卷編輯器補上答案。',
+      onClick: onOpenKeyEditor,
+    });
+  }
+  if (reviewStudents > 0) {
+    attention.push({
+      key: 'review',
+      label: '作答覆核',
+      count: reviewStudents,
+      tone: 'info',
+      icon: Sparkles,
+      title: '低信心、多選或未填作答；可逐張覆核。',
+      onClick: () => {
+        onTabChange('scores');
+        document.querySelector('.filter-pill.review')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      },
+    });
+  }
+  if (sheetWarnings.length > 0) {
+    attention.push({
+      key: 'warnings',
+      label: '影像提示',
+      count: sheetWarnings.length,
+      tone: 'info',
+      icon: AlertTriangle,
+      title: sheetWarnings.slice(0, 2).join(' '),
+      onClick: onOpenManager,
+    });
+  }
 
   return (
     <section className="results-section" aria-labelledby="results-title">
@@ -280,14 +367,11 @@ export default function Results({
               <i className="cache-dot" aria-label="使用本機快取" />
             )}
           </button>
-          <button className="btn ghost small" onClick={onOpenManager}>
-            <ScanLine size={15} /> 管理答題紙
-          </button>
           <button className="btn ghost small" onClick={onOpenNaming}>
             <PencilLine size={15} /> 批次命名
           </button>
           <button className="btn secondary small" onClick={onOpenKeyEditor}>
-            <Crown size={15} /> 檢視 / 編輯答案卷
+            <Crown size={15} /> 答案卷
           </button>
         </div>
       </div>
@@ -299,123 +383,31 @@ export default function Results({
         autoCount={autoCount}
       />
 
-      <div className="notice-stack">
-        {failed > 0 && (
-          <div className="notice warning">
-            <AlertTriangle size={17} />
-            <div>
-              <strong>{failed} 張答題紙未能辨識</strong>
-              <span>請到「管理答題紙」檢查影像，或改用較清晰的掃描／PDF。</span>
-            </div>
-            <button className="notice-action" onClick={onOpenManager}>
-              檢查 <ArrowRight size={14} />
-            </button>
+      {attention.length > 0 && (
+        <div className="attention-bar">
+          <span className="attention-label">
+            <AlertTriangle size={14} /> 需要留意
+          </span>
+          <div className="attention-items">
+            {attention.map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  className={`attention-chip ${item.tone}`}
+                  title={item.title}
+                  onClick={item.onClick}
+                >
+                  <Icon size={13} />
+                  {item.label}
+                  {item.count !== undefined && <b>{item.count}</b>}
+                </button>
+              );
+            })}
           </div>
-        )}
-        {(missingSeat > 0 || duplicateSeats.length > 0) && (
-          <div className="notice warning">
-            <AlertTriangle size={17} />
-            <div>
-              <strong>班別 / 學號需要覆核</strong>
-              <span>
-                {missingSeat > 0 && `${missingSeat} 張未能讀取學號。`}
-                {duplicateSeats.length > 0 &&
-                  `${duplicateSeats.length} 個學號重複（${duplicateSeats
-                    .map(([seat]) => seat)
-                    .join('、')}）。`}
-                左上角的 Level / Class / Class No 若填得太淡或寫在格子上方，系統可能讀不到；可直接在成績表修改。
-              </span>
-            </div>
-            <button className="notice-action" onClick={() => onTabChange('scores')}>
-              查看 <ArrowRight size={14} />
-            </button>
-          </div>
-        )}
-        {rosterStatus === 'error' && (
-          <div className="notice warning">
-            <AlertTriangle size={17} />
-            <div>
-              <strong>未能載入全校名單</strong>
-              <span>姓名需手動輸入或使用批次命名；可重試讀取名單。</span>
-            </div>
-            <button className="notice-action" onClick={onRefreshRoster}>
-              重試 <ArrowRight size={14} />
-            </button>
-          </div>
-        )}
-        {suggestedStudents > 0 && (
-          <div className="notice warning">
-            <AlertTriangle size={17} />
-            <div>
-              <strong>{suggestedStudents} 位學生的班別／學號／姓名為系統建議</strong>
-              <span>
-                系統按上載順序及全校名單建議，相關欄位以黃色標示（＊）；請在成績表確認或修改。
-              </span>
-            </div>
-            <button className="notice-action" onClick={() => onTabChange('scores')}>
-              查看 <ArrowRight size={14} />
-            </button>
-          </div>
-        )}
-        {invalidKeys > 0 && (
-          <div className="notice warning">
-            <AlertTriangle size={17} />
-            <div>
-              <strong>答案卷有 {invalidKeys} 題未設定</strong>
-              <span>這些題目暫時不會計分；請補上答案以完成整份統計。</span>
-            </div>
-            <button className="notice-action" onClick={onOpenKeyEditor}>
-              設定答案 <ArrowRight size={14} />
-            </button>
-          </div>
-        )}
-        {reviewStudents > 0 && (
-          <div className="notice info">
-            <Sparkles size={17} />
-            <div>
-              <strong>{reviewStudents} 位學生有需要覆核的作答</strong>
-              <span>
-                {flaggedStudents > 0 && `${flaggedStudents} 位有低信心／multi`}
-                {flaggedStudents > 0 && blankSheets > 0 && '；'}
-                {blankSheets > 0 && `${blankSheets} 位共有 ${blankCells} 個 blank（可能漏填或太淡）`}
-                。blank 會照樣以 0 分計，但已納入覆核；可在成績表用「需覆核」或「有 blank」篩選。
-              </span>
-            </div>
-            <button
-              className="notice-action"
-              onClick={() => {
-                onTabChange('scores');
-                document.querySelector('.filter-pill.review')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              }}
-            >
-              查看 <ArrowRight size={14} />
-            </button>
-          </div>
-        )}
-        {autoCount > 0 && autoCount === settings.questionCount && autoCount < 60 && (
-          <div className="notice info subtle">
-            <ListChecks size={17} />
-            <div>
-              <strong>本次測驗共 {autoCount} 題</strong>
-              <span>
-                Q{autoCount + 1}–60 未計入（系統按答案卷及全班作答自動判斷本次題數）。
-              </span>
-            </div>
-            <button className="notice-action" onClick={onOpenKeyEditor}>
-              調整題數 <ArrowRight size={14} />
-            </button>
-          </div>
-        )}
-        {sheetWarnings.length > 0 && (
-          <div className="notice info subtle">
-            <AlertTriangle size={17} />
-            <div>
-              <strong>影像提示</strong>
-              <span>{sheetWarnings.slice(0, 2).join(' ')}</span>
-            </div>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="results-tabs" role="tablist" aria-label="批改結果">
         {TABS.map((tab) => {
@@ -452,7 +444,6 @@ export default function Results({
             sheets={sheets}
             onReview={onReview}
             onEditSheet={onEditSheet}
-            onOpenNaming={onOpenNaming}
           />
         )}
         {activeTab === 'questions' && (
@@ -479,7 +470,7 @@ export default function Results({
 
       <div className="results-footnote">
         <Settings2 size={14} />
-        所有數據即時計算；修正姓名、答案或答案卷後，統計與匯出會自動更新。
+        修正資料後即時更新。
       </div>
     </section>
   );

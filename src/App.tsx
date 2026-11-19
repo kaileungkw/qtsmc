@@ -1045,7 +1045,6 @@ export default function App() {
         sheetCount={sheets.length}
         saveState={saveState}
         processing={processing || taskBusy || importProgress.active}
-        onNewTask={() => void createNewTask()}
       />
 
       <TaskBar
@@ -1073,8 +1072,8 @@ export default function App() {
                 變成品質清楚的成績表。
               </h1>
               <p className="hero-lead">
-                上載掃描或 PDF，系統自動找出答案格、計算分數，並整理每題答對率與每個選項的百分比。
-                第一張預設為答案卷（只作標準，不計入全班統計）。
+                上載掃描或 PDF，自動找出答案、計分，並整理每題與選項統計。
+                第一張為答案卷，不計入統計。
               </p>
               <div className="hero-points">
                 <span>本機辨識 · 不上傳</span>
@@ -1132,7 +1131,6 @@ export default function App() {
             onSetKey={setKeySheet}
             onProcess={processAll}
             onClear={clearCurrentSheets}
-            onNewTask={() => void createNewTask()}
             onImportBackup={importBackup}
           />
         )}

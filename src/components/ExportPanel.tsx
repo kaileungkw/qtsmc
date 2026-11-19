@@ -110,7 +110,6 @@ export default function ExportPanel({
             <Settings2 size={17} />
             <div>
               <h3>報告設定</h3>
-              <p>這些資料會寫入 Excel 及 CSV 的標題與設定頁。</p>
             </div>
           </div>
           <div className="form-grid">
@@ -256,8 +255,7 @@ export default function ExportPanel({
             <Download size={17} />
             <div>
               <h3>下載成績</h3>
-              <p>所有檔案即時在你的瀏覽器產生。</p>
-            </div>
+              </div>
           </div>
 
           <button
@@ -274,7 +272,7 @@ export default function ExportPanel({
             </span>
             <span className="export-btn-copy">
               <strong>Excel 成績報告 (.xlsx)</strong>
-              <small>6 個工作表：成績、題目分析、選項統計、答案卷、統計摘要、設定</small>
+              <small>6 個工作表</small>
             </span>
             <Download size={18} />
           </button>
@@ -293,7 +291,7 @@ export default function ExportPanel({
             </span>
             <span className="export-btn-copy">
               <strong>CSV 壓縮檔 (.zip)</strong>
-              <small>成績總表、題目分析、選項統計、答案卷、統計摘要各一個 UTF-8 CSV</small>
+              <small>5 個 UTF-8 CSV</small>
             </span>
             <Download size={18} />
           </button>
@@ -325,7 +323,7 @@ export default function ExportPanel({
           </div>
           <p className="backup-note">
             <Info size={13} />
-            JSON 備份包含答案、設定及分數，不包含原始掃描影像。
+            不含原始掃描影像。
           </p>
 
           <div className="export-file-preview">
@@ -334,10 +332,7 @@ export default function ExportPanel({
               <span>答案卷</span>
               <strong>{settings.questionCount} 題</strong>
             </div>
-            <p>
-              第一個工作表會以「答案卷」列標示，並以滿分顯示，但預設不計入平均、答對率及選項百分比。其他學生按每題
-              {settings.marksPerQuestion} 分計算。
-            </p>
+            <p>以答案卷為滿分標準，預設不計入統計。</p>
             <div className="file-name-preview">
               QTSMC_{settings.title ? settings.title.replace(/\s+/g, '_') : '成績'}_
               {settings.date || '日期'}.xlsx

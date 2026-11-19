@@ -7,11 +7,10 @@ import {
   Crown,
   Eye,
   Search,
-  SlidersHorizontal,
   Users,
 } from 'lucide-react';
 import type { Analysis, RuntimeSheet, Settings, StudentResult } from '../types';
-import { displayAnswer } from '../lib/scoring';
+import { uiAnswerLabel } from '../lib/scoring';
 
 interface ScoreTableProps {
   analysis: Analysis;
@@ -22,7 +21,6 @@ interface ScoreTableProps {
     id: string,
     patch: Partial<Pick<RuntimeSheet, 'name' | 'className' | 'seatNo'>>,
   ) => void;
-  onOpenNaming: () => void;
 }
 
 type ScoreFilter = 'all' | 'review' | 'blank' | 'multi';
@@ -42,7 +40,6 @@ export default function ScoreTable({
   sheets,
   onReview,
   onEditSheet,
-  onOpenNaming,
 }: ScoreTableProps) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<ScoreFilter>('all');
@@ -89,9 +86,6 @@ export default function ScoreTable({
         <Users size={26} />
         <h3>沒有可顯示的學生</h3>
         <p>請先上載至少兩張答題紙，並確認答案卷有清楚填畫。</p>
-        <button className="btn secondary" onClick={onOpenNaming}>
-          批次命名
-        </button>
       </div>
     );
   }
@@ -123,18 +117,22 @@ export default function ScoreTable({
               需覆核 <b>{reviewCount}</b>
             </button>
           )}
-          <button
-            className={`filter-pill ${filter === 'blank' ? 'active' : ''}`}
-            onClick={() => setFilter('blank')}
-          >
-            有 blank <b>{blankCount}</b>
-          </button>
-          <button
-            className={`filter-pill ${filter === 'multi' ? 'active' : ''}`}
-            onClick={() => setFilter('multi')}
-          >
-            有 multi <b>{multiCount}</b>
-          </button>
+          {blankCount > 0 && (
+            <button
+              className={`filter-pill ${filter === 'blank' ? 'active' : ''}`}
+              onClick={() => setFilter('blank')}
+            >
+              未填 <b>{blankCount}</b>
+            </button>
+          )}
+          {multiCount > 0 && (
+            <button
+              className={`filter-pill ${filter === 'multi' ? 'active' : ''}`}
+              onClick={() => setFilter('multi')}
+            >
+              多選 <b>{multiCount}</b>
+            </button>
+          )}
         </div>
         <label className="sort-box">
           <ArrowDownUp size={14} />
@@ -146,26 +144,21 @@ export default function ScoreTable({
           </select>
           <ChevronDown size={13} className="select-caret" />
         </label>
-        <button className="tools-btn" onClick={onOpenNaming} title="批次命名">
-          <SlidersHorizontal size={15} />
-          <span>名單</span>
-        </button>
       </div>
 
       <div className="table-legend">
         <span className="legend-item correct"><i />答對</span>
         <span className="legend-item wrong"><i />答錯</span>
-        <span className="legend-item blank"><i />blank</span>
-        <span className="legend-item multi"><i />multi</span>
-        <span className="legend-item key"><i />答案卷（不計入統計）</span>
+        {blankCount > 0 && <span className="legend-item blank"><i />未填</span>}
+        {multiCount > 0 && <span className="legend-item multi"><i />多選</span>}
+        <span className="legend-item key" title="不計入統計"><i />答案卷</span>
         <span className="legend-item suggested"><i />＊ 系統建議</span>
         <span className="legend-spacer" />
         <span>
-          共 {total} 位計入統計 · 每題 1 分 · 點擊任何一行查看標記圖
+          共 {total} 位 · 每題 1 分 · 點擊查看標記圖
         </span>
       </div>
 
-      <div className="mobile-scroll-hint">← 左右滑動查看 Q1–Q{questionCount} →</div>
       <div className="table-scroller score-table-scroller">
         <table className="score-table">
           <thead>
@@ -177,8 +170,8 @@ export default function ScoreTable({
               <th className="identity-col">身份</th>
               <th className="score-col">得分</th>
               <th className="percent-col">%</th>
-              <th className="count-col">blank</th>
-              <th className="count-col">multi</th>
+              <th className="count-col">未填</th>
+              <th className="count-col">多選</th>
               <th className="status-col">狀態</th>
               {Array.from({ length: questionCount }, (_, i) => (
                 <th key={i} className="q-col">
@@ -295,7 +288,7 @@ export default function ScoreTable({
                     ) : suggestedAny ? (
                       <span className="status-chip suggested">＊ 系統建議</span>
                     ) : student.blankCount > 0 ? (
-                      <span className="status-chip blank">有 blank</span>
+                      <span className="status-chip blank">有未填</span>
                     ) : (
                       <span className="status-chip ok">
                         <Check size={12} /> 正常
@@ -305,7 +298,7 @@ export default function ScoreTable({
                   {Array.from({ length: questionCount }, (_, i) => {
                     const q = i + 1;
                     const value = student.answers[q] ?? 'blank';
-                    const label = displayAnswer(value, student.multiChoices?.[q]);
+                    const label = uiAnswerLabel(value, student.multiChoices?.[q]);
                     return (
                       <td
                         key={q}
@@ -351,7 +344,7 @@ export default function ScoreTable({
               : suggestedAny
                 ? '系統建議'
                 : student.blankCount > 0
-                  ? '有 blank'
+                  ? '有未填'
                   : '正常';
           const statusClass = student.isKey
             ? 'key'
@@ -395,8 +388,8 @@ export default function ScoreTable({
                 </button>
               </div>
               <div className="msc-meta">
-                <span>blank {student.blankCount}</span>
-                <span>multi {student.multiCount}</span>
+                <span>未填 {student.blankCount}</span>
+                <span>多選 {student.multiCount}</span>
                 <span>低信心 {student.lowCount}</span>
                 {sheet && <span className="msc-file">{sheet.fileName}</span>}
               </div>
@@ -404,7 +397,7 @@ export default function ScoreTable({
                 {Array.from({ length: questionCount }, (_, i) => {
                   const q = i + 1;
                   const value = student.answers[q] ?? 'blank';
-                  const label = displayAnswer(value, student.multiChoices?.[q]);
+                  const label = uiAnswerLabel(value, student.multiChoices?.[q]);
                   const cls = student.isKey
                     ? 'key'
                     : value === 'blank'
@@ -432,7 +425,7 @@ export default function ScoreTable({
           顯示 {rows.length} / {analysis.students.length} 張
         </span>
         <span>
-          <ArrowUpRight size={13} /> 點擊學生卡或列可覆核／修改資料
+          <ArrowUpRight size={13} /> 點擊可覆核／修改
         </span>
       </div>
     </div>

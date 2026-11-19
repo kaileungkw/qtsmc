@@ -362,3 +362,13 @@ export function displayAnswer(
   if (value === 'multi' && multiChoice) return multiChoice;
   return shortAnswer(value);
 }
+
+/** Compact answer label for the webpage (exports keep blank/multi tokens). */
+export function uiAnswerLabel(
+  value: AnswerValue | undefined,
+  multiChoice?: string,
+): string {
+  if (!value || value === 'blank') return '—';
+  if (value === 'multi') return multiChoice || '多選';
+  return value;
+}

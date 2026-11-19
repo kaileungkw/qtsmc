@@ -129,7 +129,7 @@ export default function KeyEditor({
               <div className="key-card-head">
                 <span className="q-label">Q{row.q}</span>
                 <span className="detected-answer">
-                  偵測 <b>{row.detected}</b>
+                  偵測 <b>{row.detected === 'blank' ? '未填' : row.detected === 'multi' ? row.multiLabel ?? '多選' : row.detected}</b>
                   {row.status === 'low' && <i>低信心</i>}
                   {row.status === 'multi' && <i>{row.multiLabel ?? 'multi'}</i>}
                 </span>
@@ -143,7 +143,7 @@ export default function KeyEditor({
                     onClick={() => onSetKey(row.q, option)}
                     aria-pressed={row.value === option}
                   >
-                    {option}
+                    {option === 'blank' ? '未填' : option === 'multi' ? row.multiLabel ?? '多選' : option}
                   </button>
                 ))}
               </div>

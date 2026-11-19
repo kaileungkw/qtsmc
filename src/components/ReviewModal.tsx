@@ -23,7 +23,7 @@ import type {
   Settings,
   SheetOverrides,
 } from '../types';
-import { displayAnswer, getSheetAnswers } from '../lib/scoring';
+import { getSheetAnswers, uiAnswerLabel } from '../lib/scoring';
 import SheetCanvas from './SheetCanvas';
 
 interface ReviewModalProps {
@@ -178,8 +178,8 @@ export default function ReviewModal({
                 <span className="lg correct">正確</span>
                 <span className="lg wrong">錯誤</span>
                 <span className="lg low">低信心</span>
-                <span className="lg blank">blank</span>
-                <span className="lg multi">multi</span>
+                <span className="lg blank">未填</span>
+                <span className="lg multi">多選</span>
               </div>
               <div className="canvas-view-actions">
                 <button
@@ -224,7 +224,7 @@ export default function ReviewModal({
               </div>
             </div>
             <div className="canvas-hint">
-              <Eye size={13} /> 彩色框標示系統判定的答案；橙色代表信心較低。「增強對比」會加深淡色筆跡，方便對照原稿；不影響已計分答案。
+              <Eye size={13} /> 橙色框＝低信心；「增強對比」只影響顯示。
             </div>
           </div>
 
@@ -232,8 +232,7 @@ export default function ReviewModal({
             <div className="student-card">
               <div className="student-card-head">
                 <div>
-                  <span className="section-kicker">STUDENT</span>
-                  <strong>{sheet.isKey ? '答案卷（滿分）' : '學生資料'}</strong>
+                  <strong>{sheet.isKey ? '答案卷（滿分）' : '學生'}</strong>
                 </div>
                 {sheet.isKey ? (
                   <span className="score-badge key">100%</span>
@@ -292,11 +291,11 @@ export default function ReviewModal({
                   </strong>
                 </div>
                 <div>
-                  <span>blank</span>
+                  <span>未填</span>
                   <strong>{blankCount}</strong>
                 </div>
                 <div>
-                  <span>multi</span>
+                  <span>多選</span>
                   <strong>{multiCount}</strong>
                 </div>
                 <div>
@@ -324,7 +323,7 @@ export default function ReviewModal({
                 <span>
                   {overrideCount > 0
                     ? `已手動修正 ${overrideCount} 題`
-                    : '低信心、multi、blank 均可覆核'}
+                    : '可修改任何答案；低信心題已標示'}
                 </span>
               </div>
               <div className="answers-head-actions">
@@ -356,7 +355,7 @@ export default function ReviewModal({
                       {row.detected?.status === 'low'
                         ? '低信心'
                         : row.detected?.status === 'multi'
-                          ? row.multiLabel ?? 'multi'
+                          ? row.multiLabel ?? '多選'
                           : ''}
                     </span>
                   </div>
@@ -366,7 +365,7 @@ export default function ReviewModal({
                   <div className="answer-select-wrap">
                     {sheet.isKey ? (
                       <span className={`answer-readonly ${row.value}`}>
-                        {displayAnswer(row.value, row.multiLabel)}
+                        {uiAnswerLabel(row.value, row.multiLabel)}
                       </span>
                     ) : (
                       <select
@@ -377,7 +376,7 @@ export default function ReviewModal({
                       >
                         {OPTIONS.map((option) => (
                           <option key={option} value={option}>
-                            {option === 'multi' && row.multiLabel ? row.multiLabel : option}
+                            {option === 'blank' ? '未填' : option === 'multi' ? row.multiLabel ?? '多選' : option}
                           </option>
                         ))}
                       </select>
@@ -387,9 +386,7 @@ export default function ReviewModal({
                   <div className="answer-result">
                     {sheet.isKey ? (
                       <span className="ok-mini">答案</span>
-                    ) : row.value === 'blank' ? (
-                      <span className="blank-mini">blank</span>
-                    ) : row.isCorrect ? (
+                    ) : row.value === 'blank' ? null : row.isCorrect ? (
                       <CheckCircle2 size={16} className="correct-icon" />
                     ) : (
                       <X size={16} className="wrong-icon" />

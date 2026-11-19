@@ -1,17 +1,15 @@
-import { CheckCircle2, Loader2, RotateCcw, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, Loader2, ShieldCheck } from 'lucide-react';
 
 interface HeaderProps {
   sheetCount: number;
   saveState: 'idle' | 'saving' | 'saved' | 'error';
   processing: boolean;
-  onNewTask: () => void;
 }
 
 export default function Header({
   sheetCount,
   saveState,
   processing,
-  onNewTask,
 }: HeaderProps) {
   return (
     <header className="site-header">
@@ -49,17 +47,6 @@ export default function Header({
                     : '已自動儲存'}
             </span>
           </div>
-        )}
-        {sheetCount > 0 && (
-          <button
-            className="icon-text-btn"
-            onClick={onNewTask}
-            disabled={processing}
-            title="建立新任務；現有任務會保留"
-          >
-            <RotateCcw size={15} />
-            <span>新任務</span>
-          </button>
         )}
       </div>
     </header>

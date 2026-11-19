@@ -14,8 +14,8 @@ const LABEL: Record<(typeof ENTRIES)[number], string> = {
   B: 'B',
   C: 'C',
   D: 'D',
-  blank: 'blank',
-  multi: 'multi',
+  blank: '未填',
+  multi: '多選',
 };
 
 function QuestionCard({ stat, mode, denominator }: { stat: QuestionStat; mode: Mode; denominator: number }) {
@@ -79,7 +79,7 @@ function QuestionCard({ stat, mode, denominator }: { stat: QuestionStat; mode: M
       </div>
       <div className="option-card-foot">
         <span>{stat.answeredCount} / {denominator} 有效作答</span>
-        <span>{stat.options.blank.count} blank · {stat.options.multi.count} multi</span>
+        <span>未填 {stat.options.blank.count} · 多選 {stat.options.multi.count}</span>
       </div>
     </article>
   );
@@ -102,7 +102,7 @@ export default function OptionDistribution({ analysis }: OptionDistributionProps
       <div className="analysis-toolbar">
         <div className="toolbar-title">
           <h3>每題選項分佈</h3>
-          <span>把滑鼠移到色段可查看人數及百分比</span>
+          <span>{denominator} 位計入學生</span>
         </div>
         <div className="toolbar-actions">
           <button
@@ -134,8 +134,8 @@ export default function OptionDistribution({ analysis }: OptionDistributionProps
         <span><i className="lg-opt B" /> B</span>
         <span><i className="lg-opt C" /> C</span>
         <span><i className="lg-opt D" /> D</span>
-        <span><i className="lg-opt blank" /> blank</span>
-        <span><i className="lg-opt multi" /> multi</span>
+        <span><i className="lg-opt blank" /> 未填</span>
+        <span><i className="lg-opt multi" /> 多選</span>
         <span className="legend-note">
           <Eye size={13} /> 每張卡同時列出人數與百分比
         </span>

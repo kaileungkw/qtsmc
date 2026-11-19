@@ -7,8 +7,6 @@ import {
   Crown,
   FilePlus2,
   FileJson,
-  FileText,
-  Image as ImageIcon,
   Loader2,
   Plus,
   ScanLine,
@@ -29,7 +27,6 @@ interface UploaderProps {
   onSetKey: (id: string) => void;
   onProcess: () => void;
   onClear: () => void;
-  onNewTask: () => void;
   onImportBackup: (file: File) => void;
 }
 
@@ -44,7 +41,6 @@ export default function Uploader({
   onSetKey,
   onProcess,
   onClear,
-  onNewTask,
   onImportBackup,
 }: UploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -72,7 +68,7 @@ export default function Uploader({
           <span className="section-kicker">STEP 01 · 上載</span>
           <h2 id="upload-title">把整疊答題紙放進來</h2>
           <p className="panel-sub">
-            支援 JPG、PNG、WEBP 及 PDF。多頁 PDF 會自動拆成逐頁答題紙。
+            JPG、PNG、PDF；PDF 會自動拆頁。
           </p>
         </div>
         <div className="panel-head-meta">
@@ -84,15 +80,9 @@ export default function Uploader({
             </button>
           )}
           {sheets.length > 0 && (
-            <>
-              <button className="btn ghost small" onClick={onNewTask} disabled={busy}>
-                <Plus size={14} />
-                新任務
-              </button>
-              <button className="text-btn danger" onClick={onClear} disabled={busy}>
-                清除本任務
-              </button>
-            </>
+            <button className="text-btn danger" onClick={onClear} disabled={busy}>
+              清除本任務
+            </button>
           )}
         </div>
       </div>
@@ -133,14 +123,14 @@ export default function Uploader({
           <strong>
             {importProgress.active
               ? `正在拆頁 ${importProgress.page}/${importProgress.total}`
-              : '拖放檔案到這裡，或點擊選擇'}
+              : '拖放或點擊上載'}
           </strong>
           <span>
             {importProgress.active
               ? importProgress.label
               : sheets.length
-                ? '可繼續加入更多頁面；如要批改另一份卷，請按「新任務」。'
-                : '一次過上載整班；JPG / PNG / PDF 均可。'}
+                ? '可加入更多頁；另一份卷請按上方「新任務」。'
+                : '一次過上載整班。'}
           </span>
         </div>
         <span className="btn secondary small dropzone-btn">
@@ -235,15 +225,16 @@ export default function Uploader({
                       onClick={() => onSetKey(sheet.id)}
                       disabled={busy}
                       title="設為答案卷"
+                      aria-label="設為答案卷"
                     >
                       <Crown size={14} />
-                      設為答案卷
+                      <span className="mini-action-label">設為答案卷</span>
                     </button>
                   )}
                   {sheet.isKey && (
                     <span className="mini-note">
                       <Crown size={13} />
-                      答案標準 · 不計入統計
+                      不計入統計
                     </span>
                   )}
                   <div className="sheet-move">
@@ -299,7 +290,7 @@ export default function Uploader({
         <div className="upload-hint">
           <Sparkles size={16} />
           <span>
-            第一張答題紙會成為<strong>答案卷</strong>，以滿分計算，但<strong>預設不計入全班統計</strong>。你可以隨時把任何一張設為答案卷。
+            第一張為<strong>答案卷</strong>，只作標準，<strong>不計入統計</strong>。
           </span>
         </div>
         <div className="upload-actions">
@@ -331,15 +322,6 @@ export default function Uploader({
       </div>
 
       <div className="format-note">
-        <span>
-          <ImageIcon size={13} /> 手機相片或掃描影像
-        </span>
-        <span>
-          <FileText size={13} /> 多頁 PDF 自動拆頁
-        </span>
-        <span>
-          <Crown size={13} /> 第一張 = 答案卷
-        </span>
         <button
           className="backup-link"
           onClick={() => backupRef.current?.click()}

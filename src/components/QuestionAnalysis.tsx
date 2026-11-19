@@ -27,7 +27,7 @@ function OptionCell({ option, stat }: { option: 'A' | 'B' | 'C' | 'D' | 'blank' 
   const isKey = stat.key === option;
   return (
     <td className={`option-cell opt-${option} ${isKey ? 'is-key' : ''}`}>
-      <span className="option-letter">{option === 'blank' ? '—' : option}</span>
+      <span className="option-letter">{option === 'blank' ? '—' : option === 'multi' ? '多選' : option}</span>
       <span className="option-percent">{value.percent > 0 ? `${value.percent.toFixed(0)}%` : '0'}</span>
       <span className="option-count">{value.count}</span>
     </td>
@@ -86,7 +86,7 @@ export default function QuestionAnalysis({ analysis, settings }: QuestionAnalysi
             ))}
           </div>
           <p className="key-strip-note">
-            百分比以計入統計的 <strong>{denominator}</strong> 位學生為分母；blank 及 multi 亦計入分佈。
+            以 <strong>{denominator}</strong> 位計入學生為分母。
             {invalid > 0 && (
               <span className="inline-warning">
                 <AlertTriangle size={13} /> {invalid} 題未設定答案
@@ -122,7 +122,7 @@ export default function QuestionAnalysis({ analysis, settings }: QuestionAnalysi
 
       <div className="analysis-toolbar">
         <div className="toolbar-title">
-          <h3>每題答對率與選項百分比</h3>
+          <h3>每題分析</h3>
           <span>{count} 題 · {denominator} 位學生</span>
         </div>
         <div className="toolbar-actions">
@@ -169,8 +169,8 @@ export default function QuestionAnalysis({ analysis, settings }: QuestionAnalysi
                   {opt}
                 </th>
               ))}
-              <th className="opt-th opt-blank">blank</th>
-              <th className="opt-th opt-multi">multi</th>
+              <th className="opt-th opt-blank">未填</th>
+              <th className="opt-th opt-multi">多選</th>
               <th className="small-th">有效作答</th>
             </tr>
           </thead>
@@ -274,8 +274,8 @@ export default function QuestionAnalysis({ analysis, settings }: QuestionAnalysi
         <span><i className="lg-opt B" /> B</span>
         <span><i className="lg-opt C" /> C</span>
         <span><i className="lg-opt D" /> D</span>
-        <span><i className="lg-opt blank" /> blank</span>
-        <span><i className="lg-opt multi" /> multi</span>
+        <span><i className="lg-opt blank" /> 未填</span>
+        <span><i className="lg-opt multi" /> 多選</span>
         <span className="legend-note">每格百分比 = 選該選項的學生 ÷ 全部計入學生</span>
       </div>
     </div>
