@@ -4659,6 +4659,12 @@ body:has(.modal-backdrop) .toast {
   color: var(--muted);
 }
 
+.footer-actions .text-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 /* ------------------------------------------------------------------ */
 /* Responsive                                                         */
 /* ------------------------------------------------------------------ */

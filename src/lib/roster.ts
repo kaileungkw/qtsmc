@@ -21,6 +21,9 @@ export interface RosterData {
   byClassNum: Map<string, RosterEntry>;
   fetchedAt: number;
   fromCache: boolean;
+  /** True when this roster was imported from a local Excel/CSV file. */
+  custom?: boolean;
+  label?: string;
 }
 
 const SHEET_ID = '1rSkCt53pqazOQlDJ1QMqfUxQwttBKWab';
@@ -97,10 +100,20 @@ function findIndex(header: string[], names: string[]): number {
   return -1;
 }
 
-export function parseRosterCsv(text: string): RosterEntry[] {
-  const rows = parseCsv(text.replace(/^\uFEFF/, ''));
+export function parseRosterRows(rows: string[][]): RosterEntry[] {
   if (rows.length < 2) return [];
-  const header = rows[0];
+  // Some exports have a title row above the real header. Find the first row
+  // that looks like ExamID / Class / Num, otherwise use the first row.
+  const headerIndex = rows.findIndex((row) => {
+    const text = row.join('|').toLowerCase();
+    return (
+      text.includes('examid') &&
+      text.includes('class') &&
+      (text.includes('num') || text.includes('班號'))
+    );
+  });
+  const startIndex = headerIndex >= 0 ? headerIndex : 0;
+  const header = rows[startIndex];
   const examIndex = findIndex(header, [
     'examid',
     '考生號碼',
@@ -115,7 +128,7 @@ export function parseRosterCsv(text: string): RosterEntry[] {
   if (examIndex < 0 || classIndex < 0 || numIndex < 0) return [];
   const entries: RosterEntry[] = [];
   const seen = new Set<number>();
-  for (const row of rows.slice(1)) {
+  for (const row of rows.slice(startIndex + 1)) {
     const examId = Number(String(row[examIndex] ?? '').replace(/\D/g, ''));
     const cls = normaliseClass(row[classIndex]);
     const num = Number(String(row[numIndex] ?? '').replace(/\D/g, ''));
@@ -138,14 +151,114 @@ export function parseRosterCsv(text: string): RosterEntry[] {
   return entries;
 }
 
-function buildRoster(entries: RosterEntry[], fetchedAt: number, fromCache: boolean): RosterData {
+export function parseRosterCsv(text: string): RosterEntry[] {
+  return parseRosterRows(parseCsv(text.replace(/^\uFEFF/, '')));
+}
+
+function cellText(value: unknown): string {
+  if (value == null) return '';
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (value instanceof Date) return value.toISOString();
+  const cell = value as {
+    text?: unknown;
+    result?: unknown;
+    richText?: { text?: string }[];
+    hyperlink?: unknown;
+  };
+  if (typeof cell.text === 'string') return cell.text;
+  if (cell.result != null) return String(cell.result);
+  if (Array.isArray(cell.richText)) {
+    return cell.richText.map((part) => part.text ?? '').join('');
+  }
+  if (typeof cell.hyperlink === 'string') return cell.hyperlink;
+  return '';
+}
+
+/** Parse the school roster from an uploaded .xlsx or .csv file. */
+export async function parseRosterFile(file: File): Promise<RosterEntry[]> {
+  const lower = file.name.toLowerCase();
+  if (lower.endsWith('.csv') || file.type.includes('csv')) {
+    return parseRosterCsv(await file.text());
+  }
+  const ExcelJSmod = await import('exceljs');
+  const ExcelJS = (ExcelJSmod as unknown as { default?: any }).default ?? ExcelJSmod;
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(await file.arrayBuffer());
+  for (const worksheet of workbook.worksheets) {
+    const rows: string[][] = [];
+    worksheet.eachRow({ includeEmpty: false }, (row: { values: unknown[] }) => {
+      const values = row.values as unknown[];
+      const line: string[] = [];
+      for (let i = 1; i < values.length; i++) line.push(cellText(values[i]));
+      if (line.some((value) => value.trim())) rows.push(line);
+    });
+    const entries = parseRosterRows(rows);
+    if (entries.length >= 10) return entries;
+  }
+  return [];
+}
+
+function buildRoster(
+  entries: RosterEntry[],
+  fetchedAt: number,
+  fromCache: boolean,
+  custom = false,
+  label?: string,
+): RosterData {
   const byExam = new Map<number, RosterEntry>();
   const byClassNum = new Map<string, RosterEntry>();
   for (const entry of entries) {
     byExam.set(entry.examId, entry);
     byClassNum.set(`${entry.class}|${entry.num}`, entry);
   }
-  return { entries, byExam, byClassNum, fetchedAt, fromCache };
+  return { entries, byExam, byClassNum, fetchedAt, fromCache, custom, label };
+}
+
+const CUSTOM_KEY = 'qtsmc-roster-custom-v1';
+
+interface CustomRoster {
+  savedAt: number;
+  entries: RosterEntry[];
+  label?: string;
+}
+
+function readCustomRoster(): RosterData | null {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    const raw = localStorage.getItem(CUSTOM_KEY);
+    if (!raw) return null;
+    const custom = JSON.parse(raw) as CustomRoster;
+    if (!custom || !Array.isArray(custom.entries) || custom.entries.length < 10) {
+      return null;
+    }
+    return buildRoster(custom.entries, custom.savedAt, false, true, custom.label);
+  } catch {
+    return null;
+  }
+}
+
+/** Store a locally imported roster; it overrides the online sheet on this device. */
+export function saveCustomRoster(entries: RosterEntry[], label?: string): RosterData {
+  const savedAt = Date.now();
+  try {
+    localStorage.setItem(
+      CUSTOM_KEY,
+      JSON.stringify({ savedAt, entries, label } satisfies CustomRoster),
+    );
+  } catch {
+    // Private mode/quota: keep it in memory for this session.
+  }
+  return buildRoster(entries, savedAt, false, true, label);
+}
+
+export function clearCustomRoster(): void {
+  try {
+    localStorage.removeItem(CUSTOM_KEY);
+  } catch {
+    // Ignore storage restrictions.
+  }
 }
 
 function readCache(): RosterData | null {
@@ -191,6 +304,8 @@ function writeCache(entries: RosterEntry[]): void {
 }
 
 export async function loadRoster(force = false): Promise<RosterData> {
+  const custom = readCustomRoster();
+  if (custom) return custom;
   if (!force) {
     const cached = readCache();
     if (cached) return cached;
