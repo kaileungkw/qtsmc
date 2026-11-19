@@ -224,7 +224,7 @@ export default function Uploader({
                   {sheet.isKey && (
                     <span className="mini-note">
                       <Crown size={13} />
-                      以此頁作滿分標準
+                      答案標準 · 不計入統計
                     </span>
                   )}
                   <div className="sheet-move">
@@ -269,7 +269,7 @@ export default function Uploader({
         <div className="upload-hint">
           <Sparkles size={16} />
           <span>
-            第一張答題紙會成為<strong>答案卷</strong>，並以滿分計算。你可以隨時把任何一張設為答案卷。
+            第一張答題紙會成為<strong>答案卷</strong>，以滿分計算，但<strong>預設不計入全班統計</strong>。你可以隨時把任何一張設為答案卷。
           </span>
         </div>
         <div className="upload-actions">

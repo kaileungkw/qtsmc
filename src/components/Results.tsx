@@ -154,7 +154,8 @@ function Summary({
             {autoCount > 0 && autoCount === settings.questionCount
               ? '（按答案卷及全班作答自動判斷）'
               : '（手動設定）'}
-            。第一張答題紙預設為滿分標準。
+            。第一張答題紙只作滿分標準，
+            {settings.includeKey ? '已計入統計。' : '不計入統計。'}
           </p>
           {lowQuestions.length > 0 && (
             <div className="weak-list">
@@ -207,6 +208,11 @@ export default function Results({
   const invalidKeys = analysis.questions.filter((q) => !q.keyValid).length;
   const flaggedStudents = analysis.included.filter(
     (s) => s.lowCount > 0 || s.multiCount > 0,
+  ).length;
+  const blankSheets = analysis.included.filter((s) => s.blankCount > 0).length;
+  const blankCells = analysis.included.reduce((sum, s) => sum + s.blankCount, 0);
+  const reviewStudents = analysis.included.filter(
+    (s) => s.lowCount > 0 || s.multiCount > 0 || s.blankCount > 0,
   ).length;
   const sheetWarnings = sheets
     .flatMap((s) => s.detection?.warnings ?? [])
@@ -297,12 +303,17 @@ export default function Results({
             </button>
           </div>
         )}
-        {flaggedStudents > 0 && (
+        {reviewStudents > 0 && (
           <div className="notice info">
             <Sparkles size={17} />
             <div>
-              <strong>{flaggedStudents} 位學生有低信心或多選標記</strong>
-              <span>系統已照樣計分；可用標記圖快速覆核，或在成績表按學生開啟覆核。</span>
+              <strong>{reviewStudents} 位學生有需要覆核的作答</strong>
+              <span>
+                {flaggedStudents > 0 && `${flaggedStudents} 位有低信心／multi`}
+                {flaggedStudents > 0 && blankSheets > 0 && '；'}
+                {blankSheets > 0 && `${blankSheets} 位共有 ${blankCells} 個 blank（可能漏填或太淡）`}
+                。blank 會照樣以 0 分計，但已納入覆核；可在成績表用「需覆核」或「有 blank」篩選。
+              </span>
             </div>
             <button
               className="notice-action"

@@ -68,9 +68,9 @@ export default function ScoreTable({
       const sheet = sheetById.get(s.id);
       const searchable = `${s.name} ${s.className} ${s.seatNo} ${sheet?.fileName ?? ''}`.toLowerCase();
       if (q && !searchable.includes(q)) return false;
-      if (filter === 'review') return s.isKey || s.lowCount > 0 || s.multiCount > 0;
-      if (filter === 'blank') return s.isKey || s.blankCount > 0;
-      if (filter === 'multi') return s.isKey || s.multiCount > 0;
+      if (filter === 'review') return s.lowCount > 0 || s.multiCount > 0;
+      if (filter === 'blank') return s.blankCount > 0;
+      if (filter === 'multi') return s.multiCount > 0;
       return true;
     });
   }, [analysis.students, query, filter, sort, sheetById]);
@@ -79,6 +79,7 @@ export default function ScoreTable({
   const reviewCount = analysis.included.filter(
     (s) => s.lowCount > 0 || s.multiCount > 0,
   ).length;
+  const blankCount = analysis.students.filter((s) => s.blankCount > 0).length;
 
   if (!analysis.students.length) {
     return (
@@ -124,7 +125,7 @@ export default function ScoreTable({
             className={`filter-pill ${filter === 'blank' ? 'active' : ''}`}
             onClick={() => setFilter('blank')}
           >
-            有 blank
+            有 blank <b>{blankCount}</b>
           </button>
           <button
             className={`filter-pill ${filter === 'multi' ? 'active' : ''}`}
@@ -154,14 +155,14 @@ export default function ScoreTable({
         <span className="legend-item wrong"><i />答錯</span>
         <span className="legend-item blank"><i />blank</span>
         <span className="legend-item multi"><i />multi</span>
-        <span className="legend-item key"><i />答案卷</span>
+        <span className="legend-item key"><i />答案卷（不計入統計）</span>
         <span className="legend-spacer" />
         <span>
           共 {total} 位計入統計 · 每題 1 分 · 點擊任何一行查看標記圖
         </span>
-        <span className="scroll-hint">← 左右滑動查看各題 →</span>
       </div>
 
+      <div className="mobile-scroll-hint">← 左右滑動查看 Q1–Q{questionCount} →</div>
       <div className="table-scroller">
         <table className="score-table">
           <thead>
@@ -221,16 +222,29 @@ export default function ScoreTable({
                     />
                   </td>
                   <td className="name-col sticky c4">
-                    <input
-                      className="table-input name"
-                      value={student.name}
-                      onChange={(event) =>
-                        onEditSheet(student.id, { name: event.target.value })
-                      }
-                      onClick={(event) => event.stopPropagation()}
-                      placeholder="輸入姓名"
-                      aria-label={`第 ${index + 1} 張姓名`}
-                    />
+                    <div className="name-input-row">
+                      <input
+                        className="table-input name"
+                        value={student.name}
+                        onChange={(event) =>
+                          onEditSheet(student.id, { name: event.target.value })
+                        }
+                        onClick={(event) => event.stopPropagation()}
+                        placeholder="輸入姓名"
+                        aria-label={`第 ${index + 1} 張姓名`}
+                      />
+                      <button
+                        className="row-review-btn"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onReview(student.id);
+                        }}
+                        aria-label={`查看 ${student.name || '學生'} 的標記圖`}
+                        title="查看標記圖"
+                      >
+                        <Eye size={13} />
+                      </button>
+                    </div>
                     {sheet && (
                       <span className="file-hint" title={sheet.fileName}>
                         {sheet.fileName}
@@ -268,6 +282,8 @@ export default function ScoreTable({
                       <span className="status-chip review">
                         <span className="dot" /> 覆核
                       </span>
+                    ) : student.blankCount > 0 ? (
+                      <span className="status-chip blank">有 blank</span>
                     ) : (
                       <span className="status-chip ok">
                         <Check size={12} /> 正常

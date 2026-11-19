@@ -61,7 +61,9 @@ export default function ReviewModal({
   onNext,
   onOpenKeyEditor,
 }: ReviewModalProps) {
-  const [zoom, setZoom] = useState(100);
+  const [zoom, setZoom] = useState(() =>
+    typeof window !== 'undefined' && window.innerWidth < 560 ? 130 : 100,
+  );
   const [enhanceView, setEnhanceView] = useState(true);
   const [onlyReview, setOnlyReview] = useState(false);
   const answers = useMemo(() => getSheetAnswers(sheet, overrides), [sheet, overrides]);
@@ -90,7 +92,8 @@ export default function ReviewModal({
         Boolean(overrideMap[q]) ||
         detected?.status === 'low' ||
         detected?.status === 'multi' ||
-        value === 'multi';
+        value === 'multi' ||
+        value === 'blank';
       return {
         q,
         value,
@@ -301,7 +304,9 @@ export default function ReviewModal({
               <div>
                 <strong>逐題覆核</strong>
                 <span>
-                  {overrideCount > 0 ? `已手動修正 ${overrideCount} 題` : '點選答案可修正'}
+                  {overrideCount > 0
+                    ? `已手動修正 ${overrideCount} 題`
+                    : '低信心、multi、blank 均可覆核'}
                 </span>
               </div>
               <div className="answers-head-actions">
@@ -309,7 +314,7 @@ export default function ReviewModal({
                   className={`filter-pill ${onlyReview ? 'active' : ''}`}
                   onClick={() => setOnlyReview((v) => !v)}
                 >
-                  <Filter size={12} /> 需覆核
+                  <Filter size={12} /> 需覆核 {questionRows.filter((r) => r.flagged).length}
                 </button>
                 {overrideCount > 0 && (
                   <button className="icon-text-btn" onClick={onResetAnswers}>
@@ -323,9 +328,9 @@ export default function ReviewModal({
               {visibleRows.map((row) => (
                 <div
                   key={row.q}
-                  className={`answer-row ${row.isCorrect ? 'correct' : 'wrong'} ${
-                    row.flagged ? 'flagged' : ''
-                  }`}
+                  className={`answer-row ${
+                    row.value === 'blank' ? 'blank' : row.isCorrect ? 'correct' : 'wrong'
+                  } ${row.flagged ? 'flagged' : ''}`}
                 >
                   <div className="answer-q">
                     <strong>Q{row.q}</strong>

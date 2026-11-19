@@ -190,7 +190,7 @@ export default function ExportPanel({
                   }
                 />
                 <span className="toggle-track"><i /></span>
-                <small>第一張以滿分計</small>
+                <small>預設不計入</small>
               </span>
             </label>
           </div>
@@ -314,7 +314,7 @@ export default function ExportPanel({
               <strong>{settings.questionCount} 題</strong>
             </div>
             <p>
-              第一個工作表會以「答案卷」列標示，並以滿分顯示。其他學生按每題
+              第一個工作表會以「答案卷」列標示，並以滿分顯示，但預設不計入平均、答對率及選項百分比。其他學生按每題
               {settings.marksPerQuestion} 分計算。
             </p>
             <div className="file-name-preview">

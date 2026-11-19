@@ -648,7 +648,7 @@ export default function App() {
               </h1>
               <p className="hero-lead">
                 上載掃描或 PDF，系統自動找出答案格、計算分數，並整理每題答對率與每個選項的百分比。
-                第一張預設為答案卷（滿分）。
+                第一張預設為答案卷（只作標準，不計入全班統計）。
               </p>
               <div className="hero-points">
                 <span>本機辨識 · 不上傳</span>
