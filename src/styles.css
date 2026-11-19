@@ -3322,6 +3322,11 @@ main {
 /* Export                                                             */
 /* ------------------------------------------------------------------ */
 
+.export-panel,
+.score-table-wrap {
+  scroll-margin-top: 80px;
+}
+
 .export-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(340px, 0.9fr);

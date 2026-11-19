@@ -30,6 +30,7 @@ import type {
   SavedSession,
   Settings,
   SheetOverrides,
+  SourcePdf,
   TaskMeta,
 } from './types';
 
@@ -239,6 +240,7 @@ function headerPatch(
 
 export default function App() {
   const [sheets, setSheets] = useState<RuntimeSheet[]>([]);
+  const [sourcePdfs, setSourcePdfs] = useState<SourcePdf[]>([]);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [overrides, setOverrides] = useState<Record<string, SheetOverrides>>({});
   const [keyOverrides, setKeyOverrides] = useState<AnswerOverrides>({});
@@ -324,6 +326,7 @@ export default function App() {
           setOverrides(result.session.edits ?? {});
           setKeyOverrides(result.session.keyOverrides ?? {});
           setSheets(restored);
+          setSourcePdfs(result.session.sourcePdfs ?? []);
           setShowManager(restored.length === 0);
           setSaveState('saved');
           if (restored.length > 0) {
@@ -418,8 +421,9 @@ export default function App() {
       edits: overrides,
       keyOverrides,
       files,
+      sourcePdfs,
     };
-  }, [sheets, settings, overrides, keyOverrides]);
+  }, [sheets, settings, overrides, keyOverrides, sourcePdfs]);
 
   // Autosave the active task (including an empty task's subject/settings).
   useEffect(() => {
@@ -499,8 +503,9 @@ export default function App() {
   // Load images and PDFs. PDF pages become individual sheets.
   const addFiles = useCallback(
     async (files: File[]) => {
-      if (!files.length || processing) return;
+      if (!files.length || processing || taskBusy) return;
       const added: RuntimeSheet[] = [];
+      const addedPdfs: SourcePdf[] = [];
       let created = sheets.length;
       for (const file of files) {
         const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
@@ -523,6 +528,7 @@ export default function App() {
             for (const page of pages) {
               added.push(makeSheet(page.blob, page.fileName, created++));
             }
+            addedPdfs.push({ name: file.name, blob: file });
             showToast(`已將 PDF 分成 ${pages.length} 頁。`, 'success');
           } catch (error) {
             showToast(
@@ -542,6 +548,9 @@ export default function App() {
         }
       }
       if (!added.length) return;
+      if (addedPdfs.length) {
+        setSourcePdfs((prev) => [...prev, ...addedPdfs]);
+      }
       setSheets((prev) => {
         const next = [...prev, ...added];
         if (!next.some((s) => s.isKey)) {
@@ -555,14 +564,14 @@ export default function App() {
       );
       setShowManager(true);
     },
-    [processing, sheets.length, showToast],
+    [processing, sheets.length, showToast, taskBusy],
   );
 
   // Year and subject are required before the first upload, so every task has a
   // readable label and the pass mark can follow the form level.
   const handleFiles = useCallback(
     (files: File[]) => {
-      if (!files.length || processing || importProgress.active) return;
+      if (!files.length || processing || taskBusy || importProgress.active) return;
       if (!settings.formLevel.trim() || !settings.subject.trim()) {
         setPendingFiles(files);
         setSetupMode('upload');
@@ -576,6 +585,7 @@ export default function App() {
       processing,
       settings.formLevel,
       settings.subject,
+      taskBusy,
     ],
   );
 
@@ -831,6 +841,7 @@ export default function App() {
         : restored;
       for (const sheet of sheets) URL.revokeObjectURL(sheet.previewUrl);
       setSheets(nextSheets);
+      setSourcePdfs(saved?.sourcePdfs ?? []);
       if (saved) {
         setSettings({ ...DEFAULT_SETTINGS, ...saved.settings });
         setOverrides(saved.edits ?? {});
@@ -914,6 +925,7 @@ export default function App() {
       const meta = createTaskMeta(uid(), '', subject, formLevel);
       for (const sheet of sheets) URL.revokeObjectURL(sheet.previewUrl);
       setSheets([]);
+      setSourcePdfs([]);
       setSettings({
         ...DEFAULT_SETTINGS,
         formLevel,
@@ -988,6 +1000,7 @@ export default function App() {
     }
     for (const sheet of sheets) URL.revokeObjectURL(sheet.previewUrl);
     setSheets([]);
+    setSourcePdfs([]);
     setOverrides({});
     setKeyOverrides({});
     setReviewId(null);
@@ -1090,6 +1103,7 @@ export default function App() {
         });
         for (const sheet of sheets) URL.revokeObjectURL(sheet.previewUrl);
         setSheets(roster ? applyRosterAndSuggestions(restored, roster) : restored);
+        setSourcePdfs([]);
         setSettings({ ...DEFAULT_SETTINGS, ...saved.settings });
         setOverrides(saved.edits ?? {});
         setKeyOverrides(saved.keyOverrides ?? {});
@@ -1142,7 +1156,7 @@ export default function App() {
         {(showManager || sheets.length === 0) && (
           <Uploader
             sheets={sheets}
-            processing={processing}
+            processing={processing || taskBusy}
             progress={progress}
             importProgress={importProgress}
             onFiles={handleFiles}
@@ -1210,6 +1224,7 @@ export default function App() {
             analysis={analysis}
             settings={settings}
             sheets={sheets}
+            sourcePdfs={sourcePdfs}
             keySheet={keySheet}
             overrides={overrides}
             activeTab={activeTab}

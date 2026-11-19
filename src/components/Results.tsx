@@ -16,6 +16,7 @@ import type {
   RuntimeSheet,
   Settings,
   SheetOverrides,
+  SourcePdf,
 } from '../types';
 import ScoreTable from './ScoreTable';
 import QuestionAnalysis from './QuestionAnalysis';
@@ -33,6 +34,7 @@ interface ResultsProps {
   analysis: Analysis;
   settings: Settings;
   sheets: RuntimeSheet[];
+  sourcePdfs: SourcePdf[];
   keySheet?: RuntimeSheet;
   overrides: Record<string, SheetOverrides>;
   activeTab: Tab;
@@ -194,6 +196,7 @@ export default function Results({
   analysis,
   settings,
   sheets,
+  sourcePdfs,
   keySheet,
   overrides,
   activeTab,
@@ -226,6 +229,15 @@ export default function Results({
     window.setTimeout(() => {
       document
         .querySelector('.score-table-wrap')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+  };
+
+  const openExport = () => {
+    onTabChange('export');
+    window.setTimeout(() => {
+      document
+        .getElementById('export-panel')
         ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 80);
   };
@@ -333,7 +345,7 @@ export default function Results({
           <button className="btn secondary small" onClick={onOpenKeyEditor}>
             <Crown size={15} /> 答案卷
           </button>
-          <button className="btn primary small" onClick={() => onTabChange('export')}>
+          <button className="btn primary small" onClick={openExport}>
             <Download size={15} /> 匯出成績
           </button>
         </div>
@@ -409,7 +421,7 @@ export default function Results({
             onFilterChange={setScoreFilter}
             onReview={onReview}
             onEditSheet={onEditSheet}
-            onExport={() => onTabChange('export')}
+            onExport={openExport}
           />
         )}
         {activeTab === 'questions' && (
@@ -421,6 +433,7 @@ export default function Results({
             analysis={analysis}
             settings={settings}
             sheets={sheets}
+            sourcePdfs={sourcePdfs}
             overrides={overrides}
             onSettingsChange={onSettingsChange}
             onQuestionCountChange={onQuestionCountChange}

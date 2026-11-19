@@ -4,6 +4,7 @@ import type {
   SavedSession,
   Settings,
   SheetRecord,
+  SourcePdf,
 } from '../types';
 import { displayAnswer } from './scoring';
 import { buildClassStats, type ClassStat } from './exportClass';
@@ -12,6 +13,7 @@ export interface ExportContext {
   analysis: Analysis;
   settings: Settings;
   sheets: SheetRecord[];
+  sourcePdfs?: SourcePdf[];
 }
 
 const COLORS = {
@@ -39,6 +41,14 @@ function safeName(value: string): string {
       .replace(/\s+/g, '_')
       .slice(0, 70) || 'QTSMC'
   );
+}
+
+/** e.g. S4_物理_報告 All in one */
+function reportFileBase(settings: Settings): string {
+  const parts = [settings.formLevel, settings.subject]
+    .map((value) => value.trim().replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '_'))
+    .filter(Boolean);
+  return [...parts, '報告 All in one'].join('_');
 }
 
 function download(blob: Blob, fileName: string): void {
@@ -818,8 +828,7 @@ export async function exportXlsx(
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   });
   if (options?.returnBlob) return blob;
-  const base = `QTSMC_${safeName(settings.title || '成績')}_${excelDateLabel(settings.date)}`;
-  download(blob, `${base}.xlsx`);
+  download(blob, `${reportFileBase(settings)}.xlsx`);
   return undefined;
 }
 
@@ -1108,32 +1117,47 @@ export async function exportCsvZip(ctx: ExportContext): Promise<void> {
   };
 
   const zip = new JSZip();
-  zip.file('成績總表.csv', `\uFEFF${lines.join('\r\n')}`);
-  zip.file('題目分析.csv', `\uFEFF${qLines.join('\r\n')}`);
-  zip.file('選項統計.csv', `\uFEFF${optLines.join('\r\n')}`);
-  zip.file('答案卷.csv', `\uFEFF${keyLines.join('\r\n')}`);
-  zip.file('統計摘要.csv', `\uFEFF${summaryLines.join('\r\n')}`);
+  const csvFolder = zip.folder('csv');
+  if (!csvFolder) throw new Error('未能建立 CSV 資料夾。');
+  csvFolder.file('成績總表.csv', `\uFEFF${lines.join('\r\n')}`);
+  csvFolder.file('題目分析.csv', `\uFEFF${qLines.join('\r\n')}`);
+  csvFolder.file('選項統計.csv', `\uFEFF${optLines.join('\r\n')}`);
+  csvFolder.file('答案卷.csv', `\uFEFF${keyLines.join('\r\n')}`);
+  csvFolder.file('統計摘要.csv', `\uFEFF${summaryLines.join('\r\n')}`);
   if (classStats.length > 0) {
-    zip.file('班別統計.csv', `\uFEFF${classSummaryLines.join('\r\n')}`);
+    csvFolder.file('班別統計.csv', `\uFEFF${classSummaryLines.join('\r\n')}`);
     for (const cls of classStats) {
-      zip.file(
+      csvFolder.file(
         `成績總表_${safeName(cls.name)}.csv`,
         `\uFEFF${classScoreCsv(cls)}`,
       );
     }
   }
-  // The CSV download is already a zip; include the Excel workbook as well.
+
+  // One ZIP with the complete workbook, the original uploaded PDFs and a
+  // csv/ folder for people who want to pivot the raw tables.
   const xlsxBlob = await exportXlsx(ctx, { returnBlob: true });
   if (xlsxBlob) {
-    zip.file(
-      `QTSMC_${safeName(settings.title || '成績')}_${date}.xlsx`,
-      xlsxBlob,
-    );
+    zip.file(`${reportFileBase(settings)}.xlsx`, xlsxBlob);
+  }
+  const usedPdfNames = new Set<string>();
+  for (const pdf of ctx.sourcePdfs ?? []) {
+    const safePdfName = (pdf.name || '答題紙.pdf').replace(/[\\/]/g, '_');
+    let name = safePdfName;
+    if (usedPdfNames.has(name)) {
+      const dot = safePdfName.lastIndexOf('.');
+      const stem = dot > 0 ? safePdfName.slice(0, dot) : safePdfName;
+      const ext = dot > 0 ? safePdfName.slice(dot) : '';
+      let index = 2;
+      while (usedPdfNames.has(`${stem} (${index})${ext}`)) index++;
+      name = `${stem} (${index})${ext}`;
+    }
+    usedPdfNames.add(name);
+    zip.file(name, pdf.blob);
   }
 
   const blob = await zip.generateAsync({ type: 'blob' });
-  const base = `QTSMC_${safeName(settings.title || '成績')}_${date}_csv`;
-  download(blob, `${base}.zip`);
+  download(blob, `${reportFileBase(settings)}.zip`);
 }
 
 export function buildBackup(session: SavedSession): Blob {

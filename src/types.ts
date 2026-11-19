@@ -173,6 +173,11 @@ export interface Analysis {
   summary: Summary;
 }
 
+export interface SourcePdf {
+  name: string;
+  blob: Blob;
+}
+
 export interface SavedSession {
   version: 1;
   savedAt: number;
@@ -181,4 +186,6 @@ export interface SavedSession {
   edits: Record<string, SheetOverrides>;
   keyOverrides: AnswerOverrides;
   files: Record<string, Blob>;
+  /** Original PDF uploads, kept for the "all reports + PDF" export ZIP. */
+  sourcePdfs?: SourcePdf[];
 }

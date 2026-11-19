@@ -18,6 +18,7 @@ import type {
   RuntimeSheet,
   Settings,
   SheetOverrides,
+  SourcePdf,
 } from '../types';
 import { exportCsvZip, exportXlsx } from '../lib/export';
 import { FORM_LEVELS, allSubjects, subjectGroups } from '../lib/subjects';
@@ -27,6 +28,7 @@ interface ExportPanelProps {
   analysis: Analysis;
   settings: Settings;
   sheets: RuntimeSheet[];
+  sourcePdfs: SourcePdf[];
   overrides: Record<string, SheetOverrides>;
   onSettingsChange: (patch: Partial<Settings>) => void;
   onQuestionCountChange: (count: number) => void;
@@ -47,6 +49,7 @@ export default function ExportPanel({
   analysis,
   settings,
   sheets,
+  sourcePdfs,
   overrides,
   onSettingsChange,
   onQuestionCountChange,
@@ -60,6 +63,13 @@ export default function ExportPanel({
   const [busy, setBusy] = useState<'xlsx' | 'csv' | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const invalidKeys = analysis.questions.filter((q) => !q.keyValid).length;
+  const fileBase = [
+    settings.formLevel.trim(),
+    settings.subject.trim(),
+    '報告 All in one',
+  ]
+    .filter(Boolean)
+    .join('_');
   const ready =
     settings.questionCount > 0 && analysis.included.length > 0 && sheets.length > 0;
 
@@ -70,11 +80,11 @@ export default function ExportPanel({
     }
     setBusy(kind);
     try {
-      const ctx = { analysis, settings, sheets };
+      const ctx = { analysis, settings, sheets, sourcePdfs };
       if (kind === 'xlsx') await exportXlsx(ctx);
       else await exportCsvZip(ctx);
       onToast(
-        kind === 'xlsx' ? '已下載 Excel 檔。' : '已下載 CSV 壓縮檔（5 個 CSV，含統計摘要）。',
+        kind === 'xlsx' ? '已下載 Excel 檔。' : '已下載所有報告及 PDF 壓縮檔。',
         'success',
       );
     } catch (error) {
@@ -104,7 +114,7 @@ export default function ExportPanel({
   };
 
   return (
-    <div className="export-panel">
+    <div className="export-panel" id="export-panel">
       <div className="export-grid">
         <section className="export-settings">
           <div className="export-section-head">
@@ -166,14 +176,6 @@ export default function ExportPanel({
                   </optgroup>
                 ))}
               </select>
-            </label>
-            <label className="field">
-              <span>班別</span>
-              <input
-                value={settings.className}
-                onChange={(event) => onSettingsChange({ className: event.target.value })}
-                placeholder="例如：4A"
-              />
             </label>
             <label className="field">
               <span>
@@ -322,7 +324,7 @@ export default function ExportPanel({
           <div className="export-section-head">
             <Download size={17} />
             <div>
-              <h3>下載成績</h3>
+              <h3>下載報告</h3>
               </div>
           </div>
 
@@ -358,8 +360,8 @@ export default function ExportPanel({
               )}
             </span>
             <span className="export-btn-copy">
-              <strong>CSV 壓縮檔 (.zip)</strong>
-              <small>5 個 CSV + XLSX</small>
+              <strong>所有報告及 PDF (.zip)</strong>
+              <small>XLSX + 上載 PDF + csv 資料夾</small>
             </span>
             <Download size={18} />
           </button>
@@ -401,10 +403,7 @@ export default function ExportPanel({
               <strong>{settings.questionCount} 題</strong>
             </div>
             <p>以答案卷為滿分標準，預設不計入統計。</p>
-            <div className="file-name-preview">
-              QTSMC_{settings.title ? settings.title.replace(/\s+/g, '_') : '成績'}_
-              {settings.date || '日期'}.xlsx
-            </div>
+            <div className="file-name-preview">{fileBase}.xlsx</div>
           </div>
 
           <div className={`ready-banner ${ready ? 'ready' : 'not-ready'}`}>
