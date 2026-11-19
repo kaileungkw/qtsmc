@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -8,6 +8,8 @@ import {
   Contrast,
   ChevronRight,
   Crown,
+  Eye,
+  EyeOff,
   Filter,
   Minus,
   Plus,
@@ -67,6 +69,10 @@ export default function ReviewModal({
     typeof window !== 'undefined' && window.innerWidth < 560 ? 130 : 100,
   );
   const [enhanceView, setEnhanceView] = useState(true);
+  const [cleanView, setCleanView] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const panRef = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
+  const [panning, setPanning] = useState(false);
   const initialFlags = Boolean(
     student && !sheet.isKey && (student.lowCount > 0 || student.multiCount > 0 || student.blankCount > 0),
   );
@@ -126,6 +132,38 @@ export default function ReviewModal({
   const hasSuggestion = Boolean(
     suggested?.className || suggested?.seatNo || suggested?.name,
   );
+
+  // Drag the zoomed scan with the mouse. Touch devices keep native scrolling.
+  const startPan = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'mouse' || event.button !== 0) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    panRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      left: el.scrollLeft,
+      top: el.scrollTop,
+    };
+    setPanning(true);
+    el.setPointerCapture(event.pointerId);
+  };
+
+  const movePan = (event: React.PointerEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    const start = panRef.current;
+    if (!el || !start) return;
+    el.scrollLeft = start.left - (event.clientX - start.x);
+    el.scrollTop = start.top - (event.clientY - start.y);
+  };
+
+  const endPan = (event: React.PointerEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    if (el?.hasPointerCapture(event.pointerId)) {
+      el.releasePointerCapture(event.pointerId);
+    }
+    panRef.current = null;
+    setPanning(false);
+  };
 
   if (!detection?.ok) {
     return (
@@ -193,9 +231,17 @@ export default function ReviewModal({
               </div>
               <div className="canvas-view-actions">
                 <button
+                  className={`view-toggle ${cleanView ? 'active' : ''}`}
+                  onClick={() => setCleanView((value) => !value)}
+                  title={cleanView ? '顯示彩色標記' : '隱藏所有標記，只看原始掃描'}
+                >
+                  {cleanView ? <Eye size={13} /> : <EyeOff size={13} />}
+                  {cleanView ? '顯示標記' : '原圖'}
+                </button>
+                <button
                   className={`view-toggle ${enhanceView ? 'active' : ''}`}
                   onClick={() => setEnhanceView((value) => !value)}
-                  title={enhanceView ? '切換原圖' : '加深淡色筆跡，方便覆核'}
+                  title={enhanceView ? '關閉增強對比' : '加深淡色筆跡，方便覆核'}
                 >
                   <Contrast size={13} />
                   {enhanceView ? '增強中' : '增強對比'}
@@ -219,7 +265,14 @@ export default function ReviewModal({
                 </div>
               </div>
             </div>
-            <div className="canvas-scroll">
+            <div
+              className={`canvas-scroll ${panning ? 'dragging' : ''}`}
+              ref={scrollRef}
+              onPointerDown={startPan}
+              onPointerMove={movePan}
+              onPointerUp={endPan}
+              onPointerCancel={endPan}
+            >
               <div className="canvas-zoom" style={{ width: `${zoom}%` }}>
                 <SheetCanvas
                   src={sheet.previewUrl}
@@ -230,6 +283,7 @@ export default function ReviewModal({
                   isKey={sheet.isKey}
                   brightness={enhanceView ? 0.92 : 1}
                   contrast={enhanceView ? 1.55 : 1}
+                  showMarkers={!cleanView}
                 />
               </div>
             </div>

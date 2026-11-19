@@ -3958,12 +3958,19 @@ main {
   overflow: auto;
   padding: 14px;
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: flex-start;
+  cursor: grab;
+  user-select: none;
+}
+
+.canvas-scroll.dragging {
+  cursor: grabbing;
 }
 
 .canvas-zoom {
   flex: 0 0 auto;
+  margin: 0 auto;
   transition: width 0.15s ease;
 }
 

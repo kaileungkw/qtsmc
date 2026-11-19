@@ -10,6 +10,7 @@ interface SheetCanvasProps {
   isKey: boolean;
   brightness?: number;
   contrast?: number;
+  showMarkers?: boolean;
   className?: string;
 }
 
@@ -60,6 +61,7 @@ export default function SheetCanvas({
   isKey,
   brightness = 1,
   contrast = 1,
+  showMarkers = true,
   className,
 }: SheetCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -112,10 +114,9 @@ export default function SheetCanvas({
 
       const scale = W / 1500;
       const frameLine = Math.max(1.2, 2 * scale);
-      const cellLine = Math.max(1.1, 1.7 * scale);
       const chosenLine = Math.max(2, 2.8 * scale);
-      const fontSize = Math.max(12, 15 * scale);
 
+      if (showMarkers) {
       for (const frame of detection.frames) {
         ctx.strokeStyle = 'rgba(23,50,77,0.20)';
         ctx.lineWidth = frameLine;
@@ -193,6 +194,7 @@ export default function SheetCanvas({
         }
 
       }
+      }
       ctx.restore();
     };
     image.onerror = () => {
@@ -213,13 +215,13 @@ export default function SheetCanvas({
     return () => {
       cancelled = true;
     };
-  }, [src, detection, answers, keyAnswers, questionCount, isKey, brightness, contrast]);
+  }, [src, detection, answers, keyAnswers, questionCount, isKey, brightness, contrast, showMarkers]);
 
   return (
     <canvas
       ref={canvasRef}
       className={`sheet-canvas ${className ?? ''}`}
-      aria-label="答題紙標記圖"
+      aria-label={showMarkers ? '答題紙標記圖' : '答題紙原圖'}
     />
   );
 }
