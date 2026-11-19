@@ -142,11 +142,11 @@ export function collectVerticalSegments(
   width: number,
   height: number,
 ): Segment[] {
-  // Automatic document feeders can skew a page by ~0.2°. A long frame line
-  // then drifts across a few columns, so no single column contains the whole
-  // line. Keep shorter runs and let mergeSegments join them; frameGridSupport
-  // still rejects table cells and other false frames.
-  const minLen = Math.floor(height * 0.12);
+  // Scans can be skewed by ~0.6° (especially older maths papers). A long frame
+  // line then drifts across many columns, so no single column contains the
+  // whole line. Keep short runs and let mergeSegments join them across columns;
+  // frameGridSupport still rejects table cells and other false frames.
+  const minLen = Math.floor(height * 0.05);
   const segs: Segment[] = [];
   for (let x = 0; x < width; x++) {
     let y = 0;
@@ -355,6 +355,7 @@ interface CellScore {
   ink: number;
   base: number;
   faint: number;
+  coreDark: number;
   median: number;
   cx: number;
   cy: number;
@@ -414,10 +415,24 @@ function measureBubble(
   const shade = clamp((paper - median) / Math.max(30, paper - 170), 0, 1);
   const faint = shade >= 0.27 ? shade * 0.65 : 0;
   const base = 0.55 * dark + 0.45 * depthAvg;
+  // Extra sensitivity for very light pencil hatching inside the printed ring.
+  // The strict inner core excludes the outline, so a blank bubble stays at 0.
+  const coreRx = Math.max(2, Math.round(bw * 0.16));
+  const coreRy = Math.max(1, Math.round(bh * 0.12));
+  let coreDark = 0;
+  let coreCount = 0;
+  for (let y = cy - coreRy; y <= cy + coreRy; y++) {
+    for (let x = cx - coreRx; x <= cx + coreRx; x++) {
+      if (x < 0 || x >= width || y < 0 || y >= height) continue;
+      if (gray[y * width + x] < paper - 20) coreDark++;
+      coreCount++;
+    }
+  }
   return {
     ink: Math.max(base, faint),
     base,
     faint,
+    coreDark: coreCount ? coreDark / coreCount : 0,
     median,
     cx,
     cy,
@@ -523,8 +538,9 @@ function readFrame(
         thr,
       );
       const option = OPTIONS[c];
-      baseScores[option] = measured.base;
-      faintScores[option] = measured.faint;
+      const coreBoost = 0.6 * measured.coreDark;
+      baseScores[option] = Math.min(1, measured.base + coreBoost);
+      faintScores[option] = Math.min(1, measured.faint + coreBoost);
       cells.push({
         option,
         cx: measured.cx,
