@@ -48,6 +48,7 @@ export default function Uploader({
   const inputRef = useRef<HTMLInputElement>(null);
   const backupRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
+  const [showAllSheets, setShowAllSheets] = useState(false);
   const busy = processing || importProgress.active;
 
   const pick = () => {
@@ -74,6 +75,12 @@ export default function Uploader({
         </div>
         <div className="panel-head-meta">
           <span className="count-pill">{sheets.length} 張</span>
+          {sheets.length > 12 && (
+            <button className="btn primary small" onClick={onProcess} disabled={busy}>
+              {processing ? <Loader2 size={14} className="spin" /> : <ScanLine size={14} />}
+              開始批改
+            </button>
+          )}
           {sheets.length > 0 && (
             <button className="text-btn danger" onClick={onClear} disabled={busy}>
               清除全部
@@ -150,8 +157,12 @@ export default function Uploader({
       )}
 
       {sheets.length > 0 && (
+        <>
         <div className="sheet-grid">
-          {sheets.map((sheet, index) => {
+          {(showAllSheets || sheets.length <= 12
+            ? sheets.map((sheet, index) => ({ sheet, index }))
+            : sheets.slice(0, 8).map((sheet, index) => ({ sheet, index }))
+          ).map(({ sheet, index }) => {
             const isError = sheet.status === 'error';
             return (
               <article
@@ -263,6 +274,17 @@ export default function Uploader({
             <small>JPG / PNG / PDF</small>
           </button>
         </div>
+        {sheets.length > 12 && (
+          <button
+            className="show-all-sheets"
+            onClick={() => setShowAllSheets((value) => !value)}
+          >
+            {showAllSheets
+              ? '收起縮圖'
+              : `顯示全部 ${sheets.length} 張（尚有 ${sheets.length - 8} 張）`}
+          </button>
+        )}
+        </>
       )}
 
       <div className="upload-footer">
@@ -277,6 +299,12 @@ export default function Uploader({
             <span className="soft-warning">
               <AlertTriangle size={14} />
               至少 2 張才會有學生成績統計
+            </span>
+          )}
+          {sheets.length >= 80 && (
+            <span className="soft-warning">
+              <AlertTriangle size={14} />
+              {sheets.length} 頁：建議用桌面 Chrome／Edge；手機／iPad 可每批 50–80 頁。
             </span>
           )}
           <button

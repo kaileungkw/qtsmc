@@ -511,6 +511,7 @@ main {
   align-items: center;
   gap: 12px;
   padding-top: 6px;
+  flex-wrap: wrap;
 }
 
 .count-pill {
@@ -932,6 +933,23 @@ main {
 .add-sheet-card small {
   font-size: 10px;
   opacity: 0.7;
+}
+
+.show-all-sheets {
+  display: block;
+  margin: 12px auto 0;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-3);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 10.5px;
+}
+
+.show-all-sheets:hover {
+  border-color: var(--teal);
+  color: var(--teal);
+  background: var(--teal-soft);
 }
 
 .upload-footer {
@@ -4501,7 +4519,24 @@ body:has(.modal-backdrop) .toast {
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   }
 
-  .upload-footer {
+  .show-all-sheets {
+  display: block;
+  margin: 12px auto 0;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-3);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 10.5px;
+}
+
+.show-all-sheets:hover {
+  border-color: var(--teal);
+  color: var(--teal);
+  background: var(--teal-soft);
+}
+
+.upload-footer {
     flex-direction: column;
     align-items: stretch;
   }
