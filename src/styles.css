@@ -93,6 +93,7 @@ a {
 main {
   width: min(1280px, calc(100% - 48px));
   margin: 0 auto;
+  padding-top: 14px;
   flex: 1;
 }
 
@@ -303,6 +304,14 @@ main {
   min-width: 220px;
 }
 
+.task-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 0 1 100px;
+  min-width: 86px;
+}
+
 .task-kicker {
   display: inline-flex;
   align-items: center;
@@ -347,8 +356,8 @@ main {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  flex: 0 1 220px;
-  min-width: 160px;
+  flex: 0 1 210px;
+  min-width: 140px;
 }
 
 .task-subject span {
@@ -3437,7 +3446,8 @@ main {
   gap: 4px;
 }
 
-.field input {
+.field input,
+.field select {
   height: 34px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -3448,13 +3458,15 @@ main {
   width: 100%;
 }
 
-.field input:focus {
+.field input:focus,
+.field select:focus {
   border-color: var(--teal);
   background: #fff;
   box-shadow: 0 0 0 2px rgba(13, 102, 87, 0.1);
 }
 
-.field input:disabled {
+.field input:disabled,
+.field select:disabled {
   opacity: 0.6;
 }
 
@@ -4867,9 +4879,14 @@ body:has(.modal-backdrop) .toast {
     min-width: 0;
   }
 
+  .task-form {
+    flex: 0 1 86px;
+    min-width: 78px;
+  }
+
   .task-subject {
-    flex: 1 1 150px;
-    min-width: 130px;
+    flex: 1 1 130px;
+    min-width: 110px;
   }
 
   .task-actions {
@@ -5350,6 +5367,12 @@ body:has(.modal-backdrop) .toast {
 
   .task-actions .btn {
     min-height: 38px;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .task-actions .btn span {
+    display: none;
   }
 
   .task-delete {

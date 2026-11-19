@@ -20,6 +20,7 @@ import type {
   SheetOverrides,
 } from '../types';
 import { exportCsvZip, exportXlsx } from '../lib/export';
+import { subjectGroups } from '../lib/subjects';
 import type { ToastKind } from './Toast';
 
 interface ExportPanelProps {
@@ -123,11 +124,27 @@ export default function ExportPanel({
             </label>
             <label className="field">
               <span>科目</span>
-              <input
+              <select
                 value={settings.subject}
                 onChange={(event) => onSettingsChange({ subject: event.target.value })}
-                placeholder="例如：Physics"
-              />
+              >
+                <option value="">未選擇</option>
+                {settings.subject &&
+                  !subjectGroups(settings.formLevel)
+                    .flatMap((group) => group.subjects)
+                    .includes(settings.subject) && (
+                    <option value={settings.subject}>{settings.subject}</option>
+                  )}
+                {subjectGroups(settings.formLevel).map((group) => (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.subjects.map((item) => (
+                      <option key={`${group.label}-${item}`} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
             </label>
             <label className="field">
               <span>班別</span>

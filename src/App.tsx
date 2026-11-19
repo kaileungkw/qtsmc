@@ -38,6 +38,7 @@ const DEFAULT_SETTINGS: Settings = {
   title: '',
   subject: '',
   className: '',
+  formLevel: '',
   splitByClass: true,
   date: today,
   passMark: 50,
@@ -354,7 +355,11 @@ export default function App() {
     () => suggestQuestionCountFromClass(sheets, overrides, keySheet, keyAnswers, keyOverrides),
     [sheets, overrides, keySheet, keyAnswers, keyOverrides],
   );
-  const autoPassMark = useMemo(() => suggestPassMark(sheets), [sheets]);
+  const autoPassMark = useMemo(() => {
+    const match = settings.formLevel.match(/[1-6]/);
+    if (match) return Number(match[0]) >= 4 ? 40 : 50;
+    return suggestPassMark(sheets);
+  }, [settings.formLevel, sheets]);
 
   // Keep the automatic question count in sync with the answer sheet.
   useEffect(() => {
@@ -1023,78 +1028,22 @@ export default function App() {
         processing={processing || taskBusy || importProgress.active}
       />
 
-      <TaskBar
-        tasks={tasks}
-        activeTaskId={activeTaskId}
-        subject={settings.subject}
-        onSwitch={(id) => void switchTask(id)}
-        onNew={() => void createNewTask()}
-        onDelete={() => void deleteCurrentTask()}
-        onSubjectChange={(subject) => updateSettings({ subject })}
-        disabled={!hydrated || processing || taskBusy || importProgress.active}
-      />
+      {(sheets.length > 0 || tasks.length > 1) && (
+        <TaskBar
+          tasks={tasks}
+          activeTaskId={activeTaskId}
+          formLevel={settings.formLevel}
+          subject={settings.subject}
+          onSwitch={(id) => void switchTask(id)}
+          onNew={() => void createNewTask()}
+          onDelete={() => void deleteCurrentTask()}
+          onFormLevelChange={(formLevel) => updateSettings({ formLevel })}
+          onSubjectChange={(subject) => updateSettings({ subject })}
+          disabled={!hydrated || processing || taskBusy || importProgress.active}
+        />
+      )}
 
       <main>
-        {sheets.length === 0 && (
-          <section className="hero">
-            <div className="hero-copy">
-              <div className="eyebrow">
-                <span className="eyebrow-dot" />
-                QESOSA Tong Kwok Wah Secondary School
-              </div>
-              <h1>
-                一疊答題紙，
-                <br />
-                變成品質清楚的成績表。
-              </h1>
-              <p className="hero-lead">
-                上載掃描或 PDF，自動找出答案、計分，並整理每題與選項統計。
-                第一張為答案卷，不計入統計。
-              </p>
-              <div className="hero-points">
-                <span>本機辨識 · 不上傳</span>
-                <span>自動判斷題數</span>
-                <span>Excel / CSV 匯出</span>
-              </div>
-            </div>
-            <div className="hero-art" aria-hidden="true">
-              <div className="paper-stack paper-back" />
-              <div className="paper-stack paper-mid" />
-              <div className="paper-sheet">
-                <div className="paper-head">
-                  <span className="paper-school">QTSMC</span>
-                  <span className="paper-pill">ANSWER SHEET</span>
-                </div>
-                <div className="paper-id">
-                  <span />
-                  <span />
-                  <span />
-                </div>
-                {[0, 1, 2, 3, 4].map((row) => (
-                  <div className="bubble-row" key={row}>
-                    <b>{row + 1}</b>
-                    {[0, 1, 2, 3].map((col) => (
-                      <i
-                        key={col}
-                        className={
-                          (row === 0 && col === 3) ||
-                          (row === 1 && col === 0) ||
-                          (row === 2 && col === 2) ||
-                          (row === 3 && col === 1) ||
-                          (row === 4 && col === 0)
-                            ? 'filled'
-                            : ''
-                        }
-                      />
-                    ))}
-                  </div>
-                ))}
-                <div className="paper-stamp">24 / 24</div>
-              </div>
-            </div>
-          </section>
-        )}
-
         {(showManager || sheets.length === 0) && (
           <Uploader
             sheets={sheets}

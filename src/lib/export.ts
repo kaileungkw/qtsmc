@@ -168,6 +168,7 @@ export async function exportXlsx(
   function metaSubtitle(): string {
     const parts = [
       settings.subject ? `科目：${settings.subject}` : '',
+      settings.formLevel ? `年級：${settings.formLevel}` : '',
       settings.className ? `班別：${settings.className}` : '',
       `日期：${excelDateLabel(settings.date)}`,
       `題數：${count}`,
@@ -785,6 +786,7 @@ export async function exportXlsx(
   const settingRows: [string, string | number][] = [
     ['測驗名稱', settings.title || ''],
     ['科目', settings.subject || ''],
+    ['年級', settings.formLevel || ''],
     ['班別', settings.className || ''],
     ['日期', excelDateLabel(settings.date)],
     ['題數', count],

@@ -92,6 +92,8 @@ export interface Settings {
   title: string;
   subject: string;
   className: string;
+  /** S1–S6 (empty = not selected). */
+  formLevel: string;
   /** Add per-class breakdown/sheets when the task spans multiple classes. */
   splitByClass: boolean;
   date: string;
