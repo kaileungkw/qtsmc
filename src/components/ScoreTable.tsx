@@ -139,7 +139,11 @@ export default function ScoreTable({
         </div>
         <label className="sort-box">
           <ArrowDownUp size={14} />
-          <select value={sort} onChange={(event) => setSort(event.target.value as SortMode)}>
+          <select
+            value={sort}
+            aria-label="排序方式"
+            onChange={(event) => setSort(event.target.value as SortMode)}
+          >
             <option value="order">上載次序</option>
             <option value="score-desc">分數（高至低）</option>
             <option value="score-asc">分數（低至高）</option>
