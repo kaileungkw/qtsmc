@@ -146,6 +146,8 @@ export interface StudentResult {
   blankCount: number;
   multiCount: number;
   lowCount: number;
+  /** For detected multi answers: the selected options, e.g. "B, C". */
+  multiChoices?: Record<number, string>;
   needsReview: boolean;
   suggested?: SuggestedFields;
 }

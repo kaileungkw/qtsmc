@@ -23,7 +23,7 @@ import type {
   Settings,
   SheetOverrides,
 } from '../types';
-import { getSheetAnswers } from '../lib/scoring';
+import { displayAnswer, getSheetAnswers } from '../lib/scoring';
 import SheetCanvas from './SheetCanvas';
 
 interface ReviewModalProps {
@@ -86,6 +86,7 @@ export default function ReviewModal({
       const q = i + 1;
       const value = answers[q] ?? 'blank';
       const detected = detection?.rows.find((row) => row.q === q);
+      const multiLabel = value === 'multi' ? student?.multiChoices?.[q] : undefined;
       const key = keyAnswers[q];
       const isCorrect = !sheet.isKey && key && key !== 'blank' && key !== 'multi' && value === key;
       const flagged =
@@ -97,6 +98,7 @@ export default function ReviewModal({
       return {
         q,
         value,
+        multiLabel,
         detected,
         key,
         isCorrect,
@@ -104,7 +106,7 @@ export default function ReviewModal({
         overridden: Boolean(overrideMap[q]),
       };
     });
-  }, [answers, count, detection, keyAnswers, overrideMap, sheet.isKey]);
+  }, [answers, count, detection, keyAnswers, overrideMap, sheet.isKey, student]);
 
   const visibleRows = onlyReview ? questionRows.filter((r) => r.flagged) : questionRows;
   const lowCount = student?.lowCount ?? 0;
@@ -354,7 +356,7 @@ export default function ReviewModal({
                       {row.detected?.status === 'low'
                         ? '低信心'
                         : row.detected?.status === 'multi'
-                          ? '多選'
+                          ? row.multiLabel ?? 'multi'
                           : ''}
                     </span>
                   </div>
@@ -363,7 +365,9 @@ export default function ReviewModal({
                   </div>
                   <div className="answer-select-wrap">
                     {sheet.isKey ? (
-                      <span className={`answer-readonly ${row.value}`}>{row.value}</span>
+                      <span className={`answer-readonly ${row.value}`}>
+                        {displayAnswer(row.value, row.multiLabel)}
+                      </span>
                     ) : (
                       <select
                         className={`answer-select ${row.value}`}
@@ -373,7 +377,7 @@ export default function ReviewModal({
                       >
                         {OPTIONS.map((option) => (
                           <option key={option} value={option}>
-                            {option}
+                            {option === 'multi' && row.multiLabel ? row.multiLabel : option}
                           </option>
                         ))}
                       </select>

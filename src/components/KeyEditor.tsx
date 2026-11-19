@@ -7,6 +7,7 @@ import {
   X,
 } from 'lucide-react';
 import type { AnswerOverrides, AnswerValue, RuntimeSheet } from '../types';
+import { multiChoiceLabel } from '../lib/scoring';
 
 interface KeyEditorProps {
   keySheet: RuntimeSheet;
@@ -48,6 +49,10 @@ export default function KeyEditor({
           q,
           detected: detected?.answer ?? 'blank',
           status: detected?.status ?? 'blank',
+          multiLabel:
+            detected?.status === 'multi'
+              ? multiChoiceLabel(detected.scores) ?? 'multi'
+              : undefined,
           value: keyAnswers[q] ?? 'blank',
           overridden: keyOverrides[q] !== undefined,
         };
@@ -126,7 +131,7 @@ export default function KeyEditor({
                 <span className="detected-answer">
                   偵測 <b>{row.detected}</b>
                   {row.status === 'low' && <i>低信心</i>}
-                  {row.status === 'multi' && <i>多選</i>}
+                  {row.status === 'multi' && <i>{row.multiLabel ?? 'multi'}</i>}
                 </span>
                 {row.overridden && <span className="edited-pill">已修正</span>}
               </div>

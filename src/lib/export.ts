@@ -5,7 +5,7 @@ import type {
   Settings,
   SheetRecord,
 } from '../types';
-import { shortAnswer } from './scoring';
+import { displayAnswer } from './scoring';
 
 export interface ExportContext {
   analysis: Analysis;
@@ -58,8 +58,8 @@ function answerFill(value: AnswerValue, correct: boolean, isKey: boolean): strin
   return correct ? COLORS.greenSoft : COLORS.redSoft;
 }
 
-function answerText(value: AnswerValue): string {
-  return shortAnswer(value);
+function answerText(value: AnswerValue, multiChoice?: string): string {
+  return displayAnswer(value, multiChoice);
 }
 
 function studentName(studentName: string, index: number): string {
@@ -208,7 +208,7 @@ export async function exportXlsx(ctx: ExportContext): Promise<void> {
     scoreSheet.getColumn(i + 1).width = width;
   });
   for (let i = 0; i < count; i++) {
-    scoreSheet.getColumn(15 + i).width = 5.5;
+    scoreSheet.getColumn(15 + i).width = 7;
   }
 
   analysis.students.forEach((student, idx) => {
@@ -229,7 +229,7 @@ export async function exportXlsx(ctx: ExportContext): Promise<void> {
       student.multiCount,
       student.lowCount,
       exportNote(student),
-      ...qCols.map((_, i) => answerText(student.answers[i + 1] ?? 'blank')),
+      ...qCols.map((_, i) => answerText(student.answers[i + 1] ?? 'blank', student.multiChoices?.[i + 1])),
     ];
     wsRow.height = 22;
     wsRow.eachCell({ includeEmpty: true }, (cell: any, col: number) => {
@@ -273,7 +273,7 @@ export async function exportXlsx(ctx: ExportContext): Promise<void> {
     to: { row: 4 + analysis.students.length, column: 14 + count },
   };
   scoreSheet.getCell(6 + analysis.students.length, 1).value =
-    '顏色：綠色＝答對、紅色＝答錯、灰色＝blank、紫色＝multi；金色列＝答案卷。';
+    '顏色：綠色＝答對、紅色＝答錯、灰色＝blank、紫色＝multi（逐題列出所選選項，例如 B, C）；金色列＝答案卷。';
 
   // -------------------------------------------------------------------------
   // 題目分析
@@ -604,7 +604,7 @@ export async function exportCsvZip(ctx: ExportContext): Promise<void> {
         student.multiCount,
         student.lowCount,
         exportNote(student),
-        ...qCols.map((_, i) => answerText(student.answers[i + 1] ?? 'blank')),
+        ...qCols.map((_, i) => answerText(student.answers[i + 1] ?? 'blank', student.multiChoices?.[i + 1])),
       ]),
     );
   });

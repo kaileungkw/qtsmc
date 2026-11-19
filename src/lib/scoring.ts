@@ -239,6 +239,7 @@ export function analyseResults(
     if (!sheet.detection?.ok) continue;
     const answers = getSheetAnswers(sheet, overrides[sheet.id]);
     const correct: Record<number, boolean> = {};
+    const multiChoices: Record<number, string> = {};
     let score = 0;
     let blankCount = 0;
     let multiCount = 0;
@@ -246,6 +247,11 @@ export function analyseResults(
     for (let q = 1; q <= questionCount; q++) {
       const value = answers[q] ?? 'blank';
       const key = keyAnswers[q];
+      const row = sheet.detection.rows.find((r) => r.q === q);
+      if (value === 'multi' && row) {
+        const label = multiChoiceLabel(row.scores);
+        if (label) multiChoices[q] = label;
+      }
       const isCorrect = Boolean(key && key !== 'blank' && key !== 'multi' && value === key);
       correct[q] = isCorrect;
       if (sheet.isKey) {
@@ -257,7 +263,6 @@ export function analyseResults(
       if (value === 'blank') blankCount++;
       if (value === 'multi') multiCount++;
       const override = overrides[sheet.id]?.answers?.[q];
-      const row = sheet.detection.rows.find((r) => r.q === q);
       if (!override && row?.status === 'low') lowCount++;
     }
     const total = Math.max(1, questionCount);
@@ -277,6 +282,7 @@ export function analyseResults(
       blankCount,
       multiCount,
       lowCount,
+      multiChoices,
       needsReview: !sheet.isKey && (lowCount > 0 || multiCount > 0),
       suggested: sheet.suggested,
     });
@@ -336,4 +342,23 @@ export function analyseResults(
 export function shortAnswer(value: AnswerValue | undefined): string {
   if (!value) return 'blank';
   return value;
+}
+
+/** The marked options of a detected multi answer, in A-D order. */
+export function multiChoiceLabel(
+  scores: Record<'A' | 'B' | 'C' | 'D', number>,
+): string | undefined {
+  const top = Math.max(scores.A, scores.B, scores.C, scores.D);
+  const floor = Math.max(0.21, top * 0.5);
+  const selected = OPTIONS.filter((option) => scores[option] >= floor);
+  return selected.length >= 2 ? selected.join(', ') : undefined;
+}
+
+/** Human-readable per-question answer: blank, A-D, or "B, C" for multi. */
+export function displayAnswer(
+  value: AnswerValue | undefined,
+  multiChoice?: string,
+): string {
+  if (value === 'multi' && multiChoice) return multiChoice;
+  return shortAnswer(value);
 }

@@ -11,6 +11,7 @@ import {
   Users,
 } from 'lucide-react';
 import type { Analysis, RuntimeSheet, Settings, StudentResult } from '../types';
+import { displayAnswer } from '../lib/scoring';
 
 interface ScoreTableProps {
   analysis: Analysis;
@@ -304,13 +305,14 @@ export default function ScoreTable({
                   {Array.from({ length: questionCount }, (_, i) => {
                     const q = i + 1;
                     const value = student.answers[q] ?? 'blank';
+                    const label = displayAnswer(value, student.multiChoices?.[q]);
                     return (
                       <td
                         key={q}
                         className={answerClass(student, q)}
-                        title={`Q${q}：${value}${student.isKey ? '（答案卷）' : student.correct[q] ? ' · 答對' : ' · 答錯'}`}
+                        title={`Q${q}：${label}${student.isKey ? '（答案卷）' : student.correct[q] ? ' · 答對' : ' · 答錯'}`}
                       >
-                        {value}
+                        {label}
                       </td>
                     );
                   })}
@@ -402,6 +404,7 @@ export default function ScoreTable({
                 {Array.from({ length: questionCount }, (_, i) => {
                   const q = i + 1;
                   const value = student.answers[q] ?? 'blank';
+                  const label = displayAnswer(value, student.multiChoices?.[q]);
                   const cls = student.isKey
                     ? 'key'
                     : value === 'blank'
@@ -412,9 +415,9 @@ export default function ScoreTable({
                           ? 'correct'
                           : 'wrong';
                   return (
-                    <span key={q} className={`msc-answer ${cls}`} title={`Q${q}：${value}`}>
+                    <span key={q} className={`msc-answer ${cls}`} title={`Q${q}：${label}`}>
                       <b>Q{q}</b>
-                      {value}
+                      {label}
                     </span>
                   );
                 })}
