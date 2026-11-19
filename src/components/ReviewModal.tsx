@@ -8,7 +8,6 @@ import {
   Contrast,
   ChevronRight,
   Crown,
-  Eye,
   Filter,
   Minus,
   Plus,
@@ -222,9 +221,6 @@ export default function ReviewModal({
                   contrast={enhanceView ? 1.55 : 1}
                 />
               </div>
-            </div>
-            <div className="canvas-hint">
-              <Eye size={13} /> 「增強對比」只影響畫面，不影響計分。
             </div>
           </div>
 

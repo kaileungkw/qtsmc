@@ -4019,17 +4019,7 @@ main {
   background: #fff;
 }
 
-.canvas-hint {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 12px;
-  font-size: 8.5px;
-  color: var(--ink-3);
-  background: rgba(249, 246, 238, 0.8);
-  border-top: 1px solid rgba(180, 165, 135, 0.4);
-  flex: 0 0 auto;
-}
+
 
 .review-side {
   display: flex;
