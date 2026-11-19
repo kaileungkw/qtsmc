@@ -163,7 +163,7 @@ export async function exportXlsx(ctx: ExportContext): Promise<void> {
     scoreSheet,
     `QTSMC 答題紙批改 — ${settings.title || '成績報告'}`,
     metaSubtitle(),
-    13 + count,
+    14 + count,
   );
   const scoreHeaders = [
     '序號',
@@ -178,17 +178,18 @@ export async function exportXlsx(ctx: ExportContext): Promise<void> {
     '答錯',
     'blank',
     'multi',
+    '低信心',
     '備註',
     ...qCols,
   ];
   scoreSheet.getRow(4).values = scoreHeaders;
   styleHeader(scoreSheet, 4);
-  const widths = [6, 9, 9, 18, 11, 8, 8, 10, 8, 8, 8, 8, 18];
+  const widths = [6, 9, 9, 18, 11, 8, 8, 10, 8, 8, 8, 8, 8, 18];
   widths.forEach((width, i) => {
     scoreSheet.getColumn(i + 1).width = width;
   });
   for (let i = 0; i < count; i++) {
-    scoreSheet.getColumn(14 + i).width = 5.5;
+    scoreSheet.getColumn(15 + i).width = 5.5;
   }
 
   analysis.students.forEach((student, idx) => {
@@ -207,6 +208,7 @@ export async function exportXlsx(ctx: ExportContext): Promise<void> {
       student.isKey ? 0 : wrong,
       student.blankCount,
       student.multiCount,
+      student.lowCount,
       student.isKey ? '答案卷（滿分）' : student.needsReview ? '需覆核' : '',
       ...qCols.map((_, i) => answerText(student.answers[i + 1] ?? 'blank')),
     ];
@@ -215,7 +217,7 @@ export async function exportXlsx(ctx: ExportContext): Promise<void> {
       cell.font = { name: FONT, size: 10, color: { argb: COLORS.text } };
       cell.border = thinBorder;
       cell.alignment = { vertical: 'middle', horizontal: 'center' };
-      if (col <= 13) {
+      if (col <= 14) {
         cell.fill = {
           type: 'pattern',
           pattern: 'solid',
@@ -228,7 +230,7 @@ export async function exportXlsx(ctx: ExportContext): Promise<void> {
     }
     wsRow.getCell(8).numFmt = '0.0"%"';
     for (let q = 1; q <= count; q++) {
-      const cell = wsRow.getCell(13 + q);
+      const cell = wsRow.getCell(14 + q);
       const value = student.answers[q] ?? 'blank';
       cell.fill = {
         type: 'pattern',
@@ -249,7 +251,7 @@ export async function exportXlsx(ctx: ExportContext): Promise<void> {
   }
   scoreSheet.autoFilter = {
     from: { row: 4, column: 1 },
-    to: { row: 4 + analysis.students.length, column: 13 + count },
+    to: { row: 4 + analysis.students.length, column: 14 + count },
   };
   scoreSheet.getCell(6 + analysis.students.length, 1).value =
     '顏色：綠色＝答對、紅色＝答錯、灰色＝blank、紫色＝multi；金色列＝答案卷。';
@@ -543,6 +545,7 @@ export async function exportCsvZip(ctx: ExportContext): Promise<void> {
       `日期：${date}`,
       `題數：${count}`,
       `每題分數：${settings.marksPerQuestion}`,
+      `答案卷：${settings.includeKey ? '計入統計' : '不計入統計'}`,
     ]),
   );
   lines.push('');
@@ -560,6 +563,7 @@ export async function exportCsvZip(ctx: ExportContext): Promise<void> {
       '答錯',
       'blank',
       'multi',
+      '低信心',
       '備註',
       ...qCols,
     ]),
@@ -579,6 +583,7 @@ export async function exportCsvZip(ctx: ExportContext): Promise<void> {
         student.isKey ? 0 : Math.max(0, student.total - student.score),
         student.blankCount,
         student.multiCount,
+        student.lowCount,
         student.isKey ? '答案卷（滿分）' : student.needsReview ? '需覆核' : '',
         ...qCols.map((_, i) => answerText(student.answers[i + 1] ?? 'blank')),
       ]),
@@ -639,11 +644,47 @@ export async function exportCsvZip(ctx: ExportContext): Promise<void> {
     );
   }
 
+  const summaryLines: string[] = [];
+  summaryLines.push(csvLine(['QTSMC 統計摘要', settings.title || '']));
+  summaryLines.push(
+    csvLine([
+      `科目：${settings.subject || ''}`,
+      `班別：${settings.className || ''}`,
+      `日期：${date}`,
+      `題數：${count}`,
+      `答案卷：${settings.includeKey ? '計入統計' : '不計入統計'}`,
+    ]),
+  );
+  summaryLines.push('');
+  summaryLines.push(csvLine(['指標', '數值']));
+  const summary = analysis.summary;
+  const summaryRows: [string, string | number][] = [
+    ['計入統計學生數', summary.includedCount],
+    ['平均分（%）', summary.average],
+    ['中位數（%）', summary.median],
+    ['最高分（%）', summary.highest],
+    ['最低分（%）', summary.lowest],
+    ['標準差', summary.stdDev],
+    [`及格率（≥${settings.passMark}%）`, summary.passRate],
+    ['滿分', count * settings.marksPerQuestion],
+    ['每題分數', settings.marksPerQuestion],
+  ];
+  for (const [label, value] of summaryRows) {
+    summaryLines.push(csvLine([label, value]));
+  }
+  summaryLines.push('');
+  summaryLines.push(csvLine(['分數區間', '人數']));
+  for (const bucket of summary.distribution) {
+    summaryLines.push(csvLine([bucket.label, bucket.count]));
+  }
+
   const zip = new JSZip();
   zip.file('成績總表.csv', `\uFEFF${lines.join('\r\n')}`);
   zip.file('題目分析.csv', `\uFEFF${qLines.join('\r\n')}`);
   zip.file('選項統計.csv', `\uFEFF${optLines.join('\r\n')}`);
   zip.file('答案卷.csv', `\uFEFF${keyLines.join('\r\n')}`);
+  zip.file('統計摘要.csv', `\uFEFF${summaryLines.join('\r\n')}`);
+
   const blob = await zip.generateAsync({ type: 'blob' });
   const base = `QTSMC_${safeName(settings.title || '成績')}_${date}_csv`;
   download(blob, `${base}.zip`);

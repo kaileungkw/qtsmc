@@ -68,7 +68,7 @@ export default function ExportPanel({
       if (kind === 'xlsx') await exportXlsx(ctx);
       else await exportCsvZip(ctx);
       onToast(
-        kind === 'xlsx' ? '已下載 Excel 檔。' : '已下載 CSV 壓縮檔（4 個 CSV）。',
+        kind === 'xlsx' ? '已下載 Excel 檔。' : '已下載 CSV 壓縮檔（5 個 CSV，含統計摘要）。',
         'success',
       );
     } catch (error) {
@@ -272,7 +272,7 @@ export default function ExportPanel({
             </span>
             <span className="export-btn-copy">
               <strong>CSV 壓縮檔 (.zip)</strong>
-              <small>成績總表、題目分析、選項統計、答案卷各一個 UTF-8 CSV</small>
+              <small>成績總表、題目分析、選項統計、答案卷、統計摘要各一個 UTF-8 CSV</small>
             </span>
             <Download size={18} />
           </button>
