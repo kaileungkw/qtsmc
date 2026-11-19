@@ -97,7 +97,7 @@ function exportNote(student: {
   if (suggested?.seatNo) suggestedFields.push('學號');
   if (suggested?.name) suggestedFields.push('姓名');
   if (suggestedFields.length) {
-    notes.push(`${suggestedFields.join('／')}為系統建議`);
+    notes.push(`${suggestedFields.join('／')}為系統補上`);
   }
   return notes.join('；');
 }

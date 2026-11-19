@@ -286,11 +286,11 @@ export default function Results({
   if (counts.suggested > 0) {
     attention.push({
       key: 'suggested',
-      label: '系統建議',
+      label: '漏填學號',
       count: counts.suggested,
       tone: 'warning',
       icon: AlertTriangle,
-      title: '黃色欄位為系統建議；按此只看這些學生。',
+      title: '系統按上載順序及名單補上漏填的學號／班別；按此只看這些學生。',
       onClick: () => showScores('suggested'),
     });
   }

@@ -112,7 +112,12 @@ export default function ScoreTable({
       count: counts.headers,
       title: '班別或學號未讀到，或同班學號重複',
     },
-    { id: 'suggested', label: '系統建議', count: counts.suggested },
+    {
+      id: 'suggested',
+      label: '漏填學號',
+      count: counts.suggested,
+      title: '系統按上載順序及名單補上漏填的學號／班別；黃色欄位待確認',
+    },
     { id: 'noname', label: '姓名不詳', count: counts.noname },
   ];
 
@@ -180,7 +185,7 @@ export default function ScoreTable({
         {counts.blank > 0 && <span className="legend-item blank"><i />未填</span>}
         {counts.multi > 0 && <span className="legend-item multi"><i />多選</span>}
         <span className="legend-item key" title="不計入統計"><i />答案卷</span>
-        <span className="legend-item suggested"><i />＊ 系統建議</span>
+        <span className="legend-item suggested"><i />＊ 漏填學號</span>
         <span className="legend-spacer" />
         <span>
           共 {analysis.included.length} 位 · 每題 1 分 · 點擊查看標記圖
@@ -229,7 +234,7 @@ export default function ScoreTable({
                   <td className="class-col sticky c2">
                     <input
                       className={`table-input compact ${suggested?.className ? 'suggested-input' : ''}`}
-                      title={suggested?.className ? '系統建議班別，請確認' : undefined}
+                      title={suggested?.className ? '系統補上的班別，請確認' : undefined}
                       value={student.className}
                       onChange={(event) =>
                         onEditSheet(student.id, { className: event.target.value })
@@ -242,7 +247,7 @@ export default function ScoreTable({
                   <td className="seat-col sticky c3">
                     <input
                       className={`table-input compact ${suggested?.seatNo ? 'suggested-input' : ''}`}
-                      title={suggested?.seatNo ? '系統建議學號，請確認' : undefined}
+                      title={suggested?.seatNo ? '系統補上的學號，請確認' : undefined}
                       value={student.seatNo}
                       onChange={(event) =>
                         onEditSheet(student.id, { seatNo: event.target.value })
@@ -256,7 +261,7 @@ export default function ScoreTable({
                     <div className="name-input-row">
                       <input
                         className={`table-input name ${suggested?.name ? 'suggested-input' : ''}`}
-                        title={suggested?.name ? '系統建議姓名，請確認' : undefined}
+                        title={suggested?.name ? '系統補上的姓名，請確認' : undefined}
                         value={student.name}
                         onChange={(event) =>
                           onEditSheet(student.id, { name: event.target.value })
@@ -319,7 +324,7 @@ export default function ScoreTable({
                         <span className="dot" /> 需覆核
                       </span>
                     ) : suggestedAny ? (
-                      <span className="status-chip suggested">＊ 系統建議</span>
+                      <span className="status-chip suggested">＊ 漏填學號</span>
                     ) : !student.name.trim() ? (
                       <span className="status-chip blank">姓名不詳</span>
                     ) : (
@@ -378,7 +383,7 @@ export default function ScoreTable({
               : needsReview
                 ? '需覆核'
                 : suggestedAny
-                  ? '系統建議'
+                  ? '漏填學號'
                   : !student.name.trim()
                     ? '姓名不詳'
                     : '正常';

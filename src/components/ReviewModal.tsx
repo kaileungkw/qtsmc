@@ -281,8 +281,7 @@ export default function ReviewModal({
                   keyAnswers={keyAnswers}
                   questionCount={count}
                   isKey={sheet.isKey}
-                  brightness={enhanceView ? 0.92 : 1}
-                  contrast={enhanceView ? 1.55 : 1}
+                  enhanced={enhanceView}
                   showMarkers={!cleanView}
                 />
               </div>
@@ -306,7 +305,7 @@ export default function ReviewModal({
               {hasSuggestion && (
                 <div className="suggested-banner">
                   <AlertTriangle size={14} />
-                  <span>班別／學號／姓名有系統建議，請確認。</span>
+                  <span>班別／學號／姓名有系統補上的資料，請確認。</span>
                 </div>
               )}
               <div className="student-fields">
@@ -314,7 +313,7 @@ export default function ReviewModal({
                   <span>姓名</span>
                   <input
                     className={suggested?.name ? 'suggested-input' : undefined}
-                    title={suggested?.name ? '系統建議姓名，請確認' : undefined}
+                    title={suggested?.name ? '系統補上的姓名，請確認' : undefined}
                     value={sheet.name}
                     onChange={(event) => onMeta({ name: event.target.value })}
                     placeholder="輸入姓名"
@@ -325,7 +324,7 @@ export default function ReviewModal({
                     <span>班別</span>
                     <input
                       className={suggested?.className ? 'suggested-input' : undefined}
-                      title={suggested?.className ? '系統建議班別，請確認' : undefined}
+                      title={suggested?.className ? '系統補上的班別，請確認' : undefined}
                       value={sheet.className}
                       onChange={(event) => onMeta({ className: event.target.value })}
                       placeholder="4A"
@@ -335,7 +334,7 @@ export default function ReviewModal({
                     <span>學號</span>
                     <input
                       className={suggested?.seatNo ? 'suggested-input' : undefined}
-                      title={suggested?.seatNo ? '系統建議學號，請確認' : undefined}
+                      title={suggested?.seatNo ? '系統補上的學號，請確認' : undefined}
                       value={sheet.seatNo}
                       onChange={(event) => onMeta({ seatNo: event.target.value })}
                       placeholder="01"
