@@ -163,17 +163,33 @@ export default function ExportPanel({
             </label>
             <label className="field">
               <span>及格分數（%）</span>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={settings.passMark}
-                onChange={(event) =>
-                  onSettingsChange({
-                    passMark: Math.max(0, Math.min(100, Number(event.target.value) || 0)),
-                  })
-                }
-              />
+              <div className="inline-field">
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={settings.passMark}
+                  disabled={settings.passMarkAuto}
+                  onChange={(event) =>
+                    onSettingsChange({
+                      passMark: Math.max(0, Math.min(100, Number(event.target.value) || 0)),
+                    })
+                  }
+                />
+                <label className="checkbox compact">
+                  <input
+                    type="checkbox"
+                    checked={settings.passMarkAuto}
+                    onChange={(event) =>
+                      onSettingsChange({ passMarkAuto: event.target.checked })
+                    }
+                  />
+                  <span>自動</span>
+                </label>
+              </div>
+              <small className="field-hint">
+                {settings.passMarkAuto ? '高中 40% · 初中 50%' : '手動設定'}
+              </small>
             </label>
             <label className="field">
               <span>本次題數</span>

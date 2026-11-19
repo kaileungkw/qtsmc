@@ -514,6 +514,7 @@ export async function exportXlsx(ctx: ExportContext): Promise<void> {
     ['每題分數', settings.marksPerQuestion],
     ['滿分', count * settings.marksPerQuestion],
     ['及格分數（%）', settings.passMark],
+    ['及格分數規則', settings.passMarkAuto ? '自動（高中40%／初中50%）' : '手動'],
     ['答案卷是否計入統計', settings.includeKey ? '是' : '否'],
     ['學生數（計入統計）', analysis.included.length],
     ['產生時間', new Date().toLocaleString('zh-HK')],

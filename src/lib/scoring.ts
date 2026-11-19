@@ -13,6 +13,24 @@ import { OPTIONS, ROWS_PER_BLOCK } from './marker';
 
 export const MAX_QUESTIONS = 60;
 
+/** HK convention: S4–S6 pass at 40%, S1–S3 at 50%. */
+export function suggestPassMark(sheets: SheetRecord[]): number | undefined {
+  const counts = new Map<number, number>();
+  const consider = (sheet: SheetRecord) => {
+    const match = sheet.className.trim().match(/^(?:S)?([1-6])/i);
+    const level = match ? Number(match[1]) : sheet.detection?.header?.level;
+    if (!level || level < 1 || level > 6) return;
+    counts.set(level, (counts.get(level) ?? 0) + 1);
+  };
+  for (const sheet of sheets) if (!sheet.isKey) consider(sheet);
+  if (counts.size === 0) for (const sheet of sheets) consider(sheet);
+  if (counts.size === 0) return undefined;
+  const level = [...counts.entries()].sort(
+    (a, b) => b[1] - a[1] || a[0] - b[0],
+  )[0][0];
+  return level >= 4 ? 40 : 50;
+}
+
 export function getSheetAnswers(
   sheet: SheetRecord | undefined,
   overrides?: SheetOverrides,

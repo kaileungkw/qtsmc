@@ -57,12 +57,6 @@ export interface TaskMeta {
   updatedAt: number;
 }
 
-export interface NamingEntry {
-  seatNo?: string;
-  candidateNo?: string;
-  name: string;
-}
-
 export type SheetStatus = 'idle' | 'processing' | 'done' | 'error';
 
 export interface SuggestedFields {
@@ -100,6 +94,8 @@ export interface Settings {
   className: string;
   date: string;
   passMark: number;
+  /** Auto: S4–S6 = 40%, S1–S3 = 50%. */
+  passMarkAuto: boolean;
   includeKey: boolean;
   marksPerQuestion: number;
   questionCount: number;

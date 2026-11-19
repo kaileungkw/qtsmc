@@ -4646,52 +4646,6 @@ main {
   gap: 7px;
 }
 
-/* Naming modal */
-
-.naming-modal {
-  width: min(560px, 100%);
-  background: var(--surface);
-  border-radius: 15px;
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-}
-
-.naming-body {
-  padding: 16px 18px;
-}
-
-.naming-body p {
-  margin: 0 0 10px;
-  font-size: 10.5px;
-  line-height: 1.6;
-  color: var(--ink-3);
-}
-
-.naming-body textarea {
-  width: 100%;
-  resize: vertical;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 9px;
-  font-size: 11px;
-  line-height: 1.7;
-  background: var(--surface-2);
-  outline: 0;
-}
-
-.naming-body textarea:focus {
-  border-color: var(--teal);
-  background: #fff;
-}
-
-.naming-count {
-  display: flex;
-  justify-content: space-between;
-  font-size: 9px;
-  color: var(--muted);
-  margin-top: 6px;
-}
-
 /* ------------------------------------------------------------------ */
 /* Toast                                                              */
 /* ------------------------------------------------------------------ */

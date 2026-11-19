@@ -4,11 +4,10 @@ import Uploader from './components/Uploader';
 import Results from './components/Results';
 import ReviewModal from './components/ReviewModal';
 import KeyEditor from './components/KeyEditor';
-import NamingModal from './components/NamingModal';
 import TaskBar from './components/TaskBar';
 import Toast, { type ToastKind } from './components/Toast';
 import Footer from './components/Footer';
-import { analyseResults, getKeyAnswers, getSheetAnswers, suggestQuestionCountFromClass, MAX_QUESTIONS } from './lib/scoring';
+import { analyseResults, getKeyAnswers, getSheetAnswers, suggestPassMark, suggestQuestionCountFromClass, MAX_QUESTIONS } from './lib/scoring';
 import { pdfToImages } from './lib/pdf';
 import { clearSession, loadSession } from './lib/storage';
 import {
@@ -20,11 +19,10 @@ import {
   saveTaskSession,
 } from './lib/tasks';
 import { downloadBackup, parseBackupFile } from './lib/export';
-import { loadRoster, type RosterData } from './lib/roster';
+import { loadRoster, lookupRoster, type RosterData } from './lib/roster';
 import { applyRosterAndSuggestions } from './lib/assign';
 import type {
   Analysis,
-  NamingEntry,
   AnswerOverrides,
   AnswerValue,
   Detection,
@@ -42,6 +40,7 @@ const DEFAULT_SETTINGS: Settings = {
   className: '',
   date: today,
   passMark: 50,
+  passMarkAuto: true,
   includeKey: false,
   marksPerQuestion: 1,
   questionCount: 0,
@@ -242,7 +241,6 @@ export default function App() {
   const [showManager, setShowManager] = useState(true);
   const [reviewId, setReviewId] = useState<string | null>(null);
   const [keyEditorOpen, setKeyEditorOpen] = useState(false);
-  const [namingOpen, setNamingOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('scores');
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const toastTimer = useRef<number | null>(null);
@@ -355,6 +353,7 @@ export default function App() {
     () => suggestQuestionCountFromClass(sheets, overrides, keySheet, keyAnswers, keyOverrides),
     [sheets, overrides, keySheet, keyAnswers, keyOverrides],
   );
+  const autoPassMark = useMemo(() => suggestPassMark(sheets), [sheets]);
 
   // Keep the automatic question count in sync with the answer sheet.
   useEffect(() => {
@@ -363,6 +362,16 @@ export default function App() {
       setSettings((prev) => ({ ...prev, questionCount: autoCount }));
     }
   }, [autoCount, settings.autoQuestionCount, settings.questionCount]);
+
+  // HK junior forms pass at 50%, senior forms at 40%.
+  useEffect(() => {
+    if (!settings.passMarkAuto || !autoPassMark) return;
+    if (settings.passMark !== autoPassMark) {
+      setSettings((prev) =>
+        prev.passMark === autoPassMark ? prev : { ...prev, passMark: autoPassMark },
+      );
+    }
+  }, [autoPassMark, settings.passMarkAuto, settings.passMark]);
 
   const analysis: Analysis = useMemo(
     () =>
@@ -672,26 +681,39 @@ export default function App() {
         prev.map((s) => {
           if (s.id !== id) return s;
           const next: RuntimeSheet = { ...s, ...patch };
+          const classOrSeatChanged =
+            patch.className !== undefined || patch.seatNo !== undefined;
           if (patch.name !== undefined) {
             next.nameSource = 'manual';
           }
-          if (
-            patch.name !== undefined ||
-            patch.className !== undefined ||
-            patch.seatNo !== undefined
-          ) {
+          if (classOrSeatChanged) {
+            const entry = lookupRoster(
+              roster,
+              patch.className ?? s.className,
+              patch.seatNo ?? s.seatNo,
+            );
+            // Entering a class and number is the source of truth: replace any
+            // previous suggestion, or leave the name blank for a transfer
+            // student who is not in the roster.
+            next.name = entry?.name ?? '';
+            next.nameSource = entry ? 'roster' : 'default';
+            next.candidateNo = entry
+              ? String(entry.examId).padStart(4, '0')
+              : undefined;
             next.suggested = {
               ...s.suggested,
-              ...(patch.name !== undefined ? { name: false } : {}),
-              ...(patch.className !== undefined ? { className: false } : {}),
-              ...(patch.seatNo !== undefined ? { seatNo: false } : {}),
+              name: false,
+              className: false,
+              seatNo: false,
             };
+          } else if (patch.name !== undefined) {
+            next.suggested = { ...s.suggested, name: false };
           }
           return next;
         }),
       );
     },
-    [],
+    [roster],
   );
 
   const setAnswer = useCallback(
@@ -757,49 +779,6 @@ export default function App() {
     setSettings((prev) => ({ ...prev, ...patch }));
   }, []);
 
-  const applyNames = useCallback((entries: NamingEntry[]) => {
-    let unmatched = 0;
-    setSheets((prev) => {
-      const next = prev.map((sheet) => ({ ...sheet }));
-      const used = new Set<string>();
-      for (const entry of entries.filter((e) => e.candidateNo || e.seatNo)) {
-        const target = next.find(
-          (sheet) =>
-            !used.has(sheet.id) &&
-            ((entry.candidateNo && sheet.candidateNo === entry.candidateNo) ||
-              (!entry.candidateNo && sheet.seatNo === entry.seatNo)),
-        );
-        if (target) {
-          target.name = entry.name;
-          target.nameSource = 'manual';
-          target.suggested = { ...target.suggested, name: false };
-          used.add(target.id);
-        } else {
-          unmatched++;
-        }
-      }
-      const unnumbered = entries.filter((e) => !e.candidateNo && !e.seatNo);
-      let nextIndex = 0;
-      for (const entry of unnumbered) {
-        while (nextIndex < next.length && used.has(next[nextIndex].id)) nextIndex++;
-        if (nextIndex < next.length) {
-          next[nextIndex].name = entry.name;
-          next[nextIndex].nameSource = 'manual';
-          next[nextIndex].suggested = { ...next[nextIndex].suggested, name: false };
-          used.add(next[nextIndex].id);
-          nextIndex++;
-        }
-      }
-      return next;
-    });
-    setNamingOpen(false);
-    if (unmatched > 0) {
-      showToast(`已套用名單，但有 ${unmatched} 個學號找不到對應答題紙。`, 'warning');
-    } else {
-      showToast('已套用姓名名單。', 'success');
-    }
-  }, [showToast]);
-
   const applyTaskContent = useCallback(
     (saved: SavedSession | undefined, fallback?: TaskMeta) => {
       const restored = saved ? runtimeFromSaved(saved) : [];
@@ -830,7 +809,6 @@ export default function App() {
       }
       setReviewId(null);
       setKeyEditorOpen(false);
-      setNamingOpen(false);
       setShowManager(!saved || nextSheets.length === 0);
       setActiveTab('scores');
     },
@@ -890,7 +868,6 @@ export default function App() {
       setKeyOverrides({});
       setReviewId(null);
       setKeyEditorOpen(false);
-      setNamingOpen(false);
       setShowManager(true);
       setSaveState('idle');
       setActiveTab('scores');
@@ -1195,7 +1172,6 @@ export default function App() {
             onReview={setReviewId}
             onEditSheet={editSheet}
             onOpenKeyEditor={() => setKeyEditorOpen(true)}
-            onOpenNaming={() => setNamingOpen(true)}
             onOpenManager={() => setShowManager(true)}
             onSettingsChange={updateSettings}
             onQuestionCountChange={setQuestionCount}
@@ -1261,20 +1237,6 @@ export default function App() {
             showToast('已清除答案卷的手動修正。', 'success');
           }}
           onClose={() => setKeyEditorOpen(false)}
-        />
-      )}
-
-      {namingOpen && (
-        <NamingModal
-          students={sheets.map((s) => ({
-            id: s.id,
-            name: s.name,
-            className: s.className,
-            seatNo: s.seatNo,
-            candidateNo: s.candidateNo,
-          }))}
-          onApply={applyNames}
-          onClose={() => setNamingOpen(false)}
         />
       )}
 

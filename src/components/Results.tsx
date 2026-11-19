@@ -5,7 +5,6 @@ import {
   Crown,
   Download,
   Grid3X3,
-  PencilLine,
   ScanLine,
   Settings2,
   Sparkles,
@@ -40,7 +39,6 @@ interface ResultsProps {
     patch: Partial<Pick<RuntimeSheet, 'name' | 'className' | 'seatNo'>>,
   ) => void;
   onOpenKeyEditor: () => void;
-  onOpenNaming: () => void;
   onOpenManager: () => void;
   onSettingsChange: (patch: Partial<Settings>) => void;
   onQuestionCountChange: (count: number) => void;
@@ -199,7 +197,6 @@ export default function Results({
   onReview,
   onEditSheet,
   onOpenKeyEditor,
-  onOpenNaming,
   onOpenManager,
   onSettingsChange,
   onQuestionCountChange,
@@ -336,9 +333,6 @@ export default function Results({
           </p>
         </div>
         <div className="results-actions">
-          <button className="btn ghost small" onClick={onOpenNaming}>
-            <PencilLine size={15} /> 批次命名
-          </button>
           <button className="btn secondary small" onClick={onOpenKeyEditor}>
             <Crown size={15} /> 答案卷
           </button>
