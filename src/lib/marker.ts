@@ -48,6 +48,44 @@ function clamp(value: number, lo: number, hi: number): number {
   return value < lo ? lo : value > hi ? hi : value;
 }
 
+
+/**
+ * Normalise the paper to white and deepen the mid-tones. Scans from a phone or
+ * photocopier often have uneven lighting and very light pencil marks; this LUT
+ * makes those marks easier to measure without changing bubble geometry.
+ */
+export function enhanceGray(
+  gray: Uint8Array,
+  width: number,
+  height: number,
+): Uint8Array {
+  const hist = new Uint32Array(256);
+  for (let i = 0; i < gray.length; i++) hist[gray[i]]++;
+  let acc = 0;
+  let paper = 255;
+  const target = gray.length * 0.9;
+  for (let v = 0; v < 256; v++) {
+    acc += hist[v];
+    if (acc >= target) {
+      paper = v;
+      break;
+    }
+  }
+  const white = Math.max(60, paper);
+  const black = 40;
+  const span = Math.max(20, white - black);
+  const lut = new Uint8Array(256);
+  for (let v = 0; v < 256; v++) {
+    const t = Math.max(0, Math.min(1, (v - black) / span));
+    lut[v] = Math.round(255 * Math.pow(t, 1.5));
+  }
+  const out = new Uint8Array(gray.length);
+  for (let i = 0; i < gray.length; i++) out[i] = lut[gray[i]];
+  void width;
+  void height;
+  return out;
+}
+
 export function rgbaToGray(
   data: Uint8ClampedArray | Uint8Array,
   width: number,
@@ -399,7 +437,7 @@ function decide(scores: Record<'A' | 'B' | 'C' | 'D', number>): {
   }
   // A double mark normally has two similar-strength fills. A single solid
   // answer plus a grey scan shadow can otherwise look like two marks.
-  if (s2 >= 0.21 && (margin < 0.06 || s2 >= 0.3)) {
+  if (s2 >= 0.21 && (margin < 0.06 || (s2 >= 0.32 && s2 >= 0.5 * s1))) {
     return { answer: 'multi', status: 'multi', confidence: 0 };
   }
   const low = s1 < 0.3 || margin < 0.075;
@@ -665,10 +703,38 @@ export function readHeaderFields(
   };
 }
 
+
+function mergeHeaderFields(
+  primary: HeaderInfo | undefined,
+  fallback: HeaderInfo | undefined,
+): HeaderInfo | undefined {
+  if (!primary && !fallback) return undefined;
+  const level = primary?.level ?? fallback?.level;
+  const classLetter = primary?.classLetter ?? fallback?.classLetter;
+  const classNo = primary?.classNo ?? fallback?.classNo;
+  const classIndex = classLetter ? 'ABCD'.indexOf(classLetter) + 1 : undefined;
+  let className = level && classLetter ? `${level}${classLetter}` : primary?.className ?? fallback?.className;
+  let seatNo = primary?.seatNo ?? fallback?.seatNo;
+  if (level && classIndex && classNo) {
+    const candidate = level * 1000 + classIndex * 100 + Number(classNo);
+    seatNo = String(candidate).padStart(4, '0');
+  }
+  return {
+    level,
+    classLetter,
+    classNo,
+    className,
+    seatNo,
+    candidateNo: seatNo,
+    confidence: Math.max(primary?.confidence ?? 0, fallback?.confidence ?? 0),
+  };
+}
+
 export function analyseGray(
   gray: Uint8Array,
   width: number,
   height: number,
+  headerFallbackGray?: Uint8Array,
 ): Detection {
   const started = performance.now();
   const binary = adaptiveBinary(gray, width, height);
@@ -734,7 +800,14 @@ export function analyseGray(
       elapsedMs: Math.round(performance.now() - started),
     };
   }
-  const header = frames.length ? readHeaderFields(gray, width, height, frames[0]) : undefined;
+  const header = frames.length
+    ? mergeHeaderFields(
+        readHeaderFields(gray, width, height, frames[0]),
+        headerFallbackGray
+          ? readHeaderFields(headerFallbackGray, width, height, frames[0])
+          : undefined,
+      )
+    : undefined;
   const rows: DetectedRow[] = [];
   for (let i = 0; i < frames.length; i++) {
     rows.push(...readFrame(gray, width, height, frames[i], i));
@@ -781,17 +854,32 @@ export function analyseWithRotation(
   gray: Uint8Array,
   width: number,
   height: number,
+  headerFallbackGray?: Uint8Array,
 ): Detection {
   let current = { gray, width, height };
+  let fallback = headerFallbackGray;
+  let fallbackSize = { width, height };
   let rotation: 0 | 90 | 180 | 270 = 0;
   let last: Detection | null = null;
   for (let attempt = 0; attempt < 4; attempt++) {
-    const result = analyseGray(current.gray, current.width, current.height);
+    const result = analyseGray(current.gray, current.width, current.height, fallback);
     result.rotation = rotation;
     if (result.ok) return result;
     last = result;
     const rotated = rotateGray90CW(current.gray, current.width, current.height);
     current = rotated;
+    if (fallback) {
+      const rotatedFallback = rotateGray90CW(
+        fallback,
+        fallbackSize.width,
+        fallbackSize.height,
+      );
+      fallback = rotatedFallback.gray;
+      fallbackSize = {
+        width: rotatedFallback.width,
+        height: rotatedFallback.height,
+      };
+    }
     rotation = (((rotation + 90) % 360) as 0 | 90 | 180 | 270);
   }
   return (

@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { analyseWithRotation, rgbaToGray } from './marker';
+import { analyseWithRotation, enhanceGray, rgbaToGray } from './marker';
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
 
@@ -35,7 +35,8 @@ scope.onmessage = async (event: MessageEvent<Job>) => {
     ctx.drawImage(bitmap, 0, 0, width, height);
     const imageData = ctx.getImageData(0, 0, width, height);
     const gray = rgbaToGray(imageData.data, width, height);
-    const detection = analyseWithRotation(gray, width, height);
+    const enhanced = enhanceGray(gray, width, height);
+    const detection = analyseWithRotation(enhanced, width, height, gray);
     bitmap.close();
     scope.postMessage({ id, detection });
   } catch (error) {

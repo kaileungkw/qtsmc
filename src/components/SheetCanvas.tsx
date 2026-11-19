@@ -8,6 +8,8 @@ interface SheetCanvasProps {
   keyAnswers: Record<number, AnswerValue>;
   questionCount: number;
   isKey: boolean;
+  brightness?: number;
+  contrast?: number;
   className?: string;
 }
 
@@ -56,6 +58,8 @@ export default function SheetCanvas({
   keyAnswers,
   questionCount,
   isKey,
+  brightness = 1,
+  contrast = 1,
   className,
 }: SheetCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -83,6 +87,7 @@ export default function SheetCanvas({
       // Draw the scan in the same orientation the detector used, then reset
       // the transform so overlay coordinates stay in detector space.
       ctx.save();
+      ctx.filter = `brightness(${brightness}) contrast(${contrast})`;
       switch (detection.rotation) {
         case 90:
           ctx.translate(W, 0);
@@ -102,6 +107,7 @@ export default function SheetCanvas({
         default:
           ctx.drawImage(image, 0, 0, W, H);
       }
+      ctx.filter = 'none';
       ctx.restore();
 
       const scale = W / 1500;
@@ -207,7 +213,7 @@ export default function SheetCanvas({
     return () => {
       cancelled = true;
     };
-  }, [src, detection, answers, keyAnswers, questionCount, isKey]);
+  }, [src, detection, answers, keyAnswers, questionCount, isKey, brightness, contrast]);
 
   return (
     <canvas

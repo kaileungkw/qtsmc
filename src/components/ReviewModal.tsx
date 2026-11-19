@@ -5,6 +5,7 @@ import {
   ArrowRight,
   CheckCircle2,
   ChevronLeft,
+  Contrast,
   ChevronRight,
   Crown,
   Eye,
@@ -61,6 +62,7 @@ export default function ReviewModal({
   onOpenKeyEditor,
 }: ReviewModalProps) {
   const [zoom, setZoom] = useState(100);
+  const [enhanceView, setEnhanceView] = useState(true);
   const [onlyReview, setOnlyReview] = useState(false);
   const answers = useMemo(() => getSheetAnswers(sheet, overrides), [sheet, overrides]);
   const student = analysis.students.find((s) => s.id === sheet.id);
@@ -170,7 +172,16 @@ export default function ReviewModal({
                 <span className="lg blank">blank</span>
                 <span className="lg multi">multi</span>
               </div>
-              <div className="zoom-controls">
+              <div className="canvas-view-actions">
+                <button
+                  className={`view-toggle ${enhanceView ? 'active' : ''}`}
+                  onClick={() => setEnhanceView((value) => !value)}
+                  title={enhanceView ? '切換原圖' : '加深淡色筆跡，方便覆核'}
+                >
+                  <Contrast size={13} />
+                  {enhanceView ? '增強中' : '增強對比'}
+                </button>
+                <div className="zoom-controls">
                 <button
                   className="icon-btn"
                   onClick={() => setZoom((z) => Math.max(60, z - 20))}
@@ -186,6 +197,7 @@ export default function ReviewModal({
                 >
                   <Plus size={15} />
                 </button>
+                </div>
               </div>
             </div>
             <div className="canvas-scroll">
@@ -197,11 +209,13 @@ export default function ReviewModal({
                   keyAnswers={keyAnswers}
                   questionCount={count}
                   isKey={sheet.isKey}
+                  brightness={enhanceView ? 0.92 : 1}
+                  contrast={enhanceView ? 1.55 : 1}
                 />
               </div>
             </div>
             <div className="canvas-hint">
-              <Eye size={13} /> 彩色框標示系統判定的答案；橙色代表信心較低，請對照原稿覆核。
+              <Eye size={13} /> 彩色框標示系統判定的答案；橙色代表信心較低。「增強對比」會加深淡色筆跡，方便對照原稿；不影響已計分答案。
             </div>
           </div>
 

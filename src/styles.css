@@ -3334,6 +3334,31 @@ main {
   background: var(--purple);
 }
 
+.canvas-view-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.view-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 8.5px;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+
+.view-toggle.active {
+  background: var(--teal-soft);
+  border-color: rgba(13, 102, 87, 0.2);
+  color: var(--teal);
+}
+
 .zoom-controls {
   display: inline-flex;
   align-items: center;
