@@ -878,7 +878,23 @@ export function analyseGray(
       elapsedMs: Math.round(performance.now() - started),
     };
   }
-  let frames = allFrames.slice(0, 4);
+  let frames = [...allFrames].sort((a, b) => a.x - b.x);
+  // A form has exactly three answer blocks. Skew/extra table lines can produce
+  // a fourth, wider false frame; keep the three frames with consistent block
+  // widths and heights before applying the shared row template.
+  if (frames.length > 3) {
+    const widths = frames.map((f) => f.w).sort((a, b) => a - b);
+    const heights = frames.map((f) => f.h).sort((a, b) => a - b);
+    const mid = Math.floor(frames.length / 2);
+    const medianW = widths[mid];
+    const medianH = heights[mid];
+    const consistent = frames.filter(
+      (f) =>
+        Math.abs(f.w - medianW) <= 0.18 * medianW &&
+        Math.abs(f.h - medianH) <= 0.18 * medianH,
+    );
+    frames = (consistent.length >= 3 ? consistent : frames).slice(0, 3);
+  }
   // The three answer blocks are printed side by side on one baseline. A broken
   // scan edge can truncate one block's border lines; normalise their vertical
   // geometry to the group median so every block keeps the same row template.
