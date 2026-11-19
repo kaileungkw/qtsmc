@@ -32,7 +32,9 @@ const COLORS = {
   text: 'FF243747',
 };
 
-const FONT = 'Aptos, Calibri, Microsoft JhengHei, sans-serif';
+// Excel font names are limited to 31 characters; a CSS fallback list such as
+// "Aptos, Calibri, ..." makes Excel discard the whole styles part on open.
+const FONT = 'Microsoft JhengHei';
 
 function safeName(value: string): string {
   return (
