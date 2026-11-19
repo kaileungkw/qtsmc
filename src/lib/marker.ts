@@ -452,6 +452,44 @@ function decide(scores: Record<'A' | 'B' | 'C' | 'D', number>): {
   };
 }
 
+/**
+ * Estimate the small per-frame grid offset caused by scanner skew. The printed
+ * bubble outlines give a strong periodic signal; choosing one offset for the
+ * whole frame prevents the lower rows of the third block from drifting onto
+ * their bottom outline on a slightly rotated page.
+ */
+function findFrameGridOffset(
+  gray: Uint8Array,
+  width: number,
+  height: number,
+  frame: Frame,
+): { dx: number; dy: number } {
+  const bw = BUBBLE_W_FRAC * frame.w;
+  const bh = BUBBLE_H_FRAC * frame.h;
+  const hw = Math.max(6, Math.round(bw / 2));
+  const hh = Math.max(4, Math.round(bh / 2));
+  let best = { score: Infinity, dx: 0, dy: 0 };
+  for (let dy = -6; dy <= 6; dy++) {
+    for (let dx = -4; dx <= 4; dx++) {
+      let sum = 0;
+      let count = 0;
+      for (let r = 0; r < ROWS_PER_BLOCK; r++) {
+        const cy = Math.round(
+          frame.y + (ROW0_FRAC + ROW_PITCH_FRAC * r) * frame.h + dy,
+        );
+        for (let c = 0; c < 4; c++) {
+          const cx = Math.round(frame.x + COL_FRACS[c] * frame.w + dx);
+          sum += ringMean(gray, width, height, cx, cy, hw, hh);
+          count++;
+        }
+      }
+      const score = count ? sum / count : Infinity;
+      if (score < best.score) best = { score, dx, dy };
+    }
+  }
+  return { dx: best.dx, dy: best.dy };
+}
+
 function readFrame(
   gray: Uint8Array,
   width: number,
@@ -463,14 +501,16 @@ function readFrame(
   const thr = Math.max(120, Math.min(210, paper - 55));
   const bw = BUBBLE_W_FRAC * frame.w;
   const bh = BUBBLE_H_FRAC * frame.h;
+  const offset = findFrameGridOffset(gray, width, height, frame);
   const rows: DetectedRow[] = [];
   for (let r = 0; r < ROWS_PER_BLOCK; r++) {
-    const cy0 = frame.y + (ROW0_FRAC + ROW_PITCH_FRAC * r) * frame.h;
+    const cy0 =
+      frame.y + (ROW0_FRAC + ROW_PITCH_FRAC * r) * frame.h + offset.dy;
     const cells: CellMark[] = [];
     const baseScores = { A: 0, B: 0, C: 0, D: 0 };
     const faintScores = { A: 0, B: 0, C: 0, D: 0 };
     for (let c = 0; c < 4; c++) {
-      const cx0 = frame.x + COL_FRACS[c] * frame.w;
+      const cx0 = frame.x + COL_FRACS[c] * frame.w + offset.dx;
       const measured = measureBubble(
         gray,
         width,
