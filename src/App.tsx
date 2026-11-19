@@ -1130,9 +1130,6 @@ export default function App() {
   return (
     <div className="app-shell">
       <Header
-        sheetCount={sheets.length}
-        saveState={saveState}
-        processing={processing || taskBusy || importProgress.active}
         tasks={tasks}
         activeTaskId={activeTaskId}
         onSwitchTask={(id) => void switchTask(id)}

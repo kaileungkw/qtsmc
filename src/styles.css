@@ -216,8 +216,7 @@ main {
   display: inline-block;
 }
 
-.privacy-pill,
-.save-pill {
+.privacy-pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -231,27 +230,6 @@ main {
 
 .privacy-pill svg {
   color: var(--teal);
-}
-
-.save-pill svg {
-  color: var(--teal);
-}
-
-.save-pill.error {
-  color: var(--red);
-  border-color: rgba(174, 69, 60, 0.24);
-  background: var(--red-soft);
-}
-
-.save-pill.error svg {
-  color: var(--red);
-}
-
-.save-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--red);
 }
 
 .icon-text-btn {
@@ -4899,14 +4877,6 @@ body:has(.modal-backdrop) .toast {
     padding: 7px;
   }
 
-  .save-pill span {
-    display: none;
-  }
-
-  .save-pill {
-    padding: 7px;
-  }
-
   .hero {
     padding: 34px 4px 28px;
   }
@@ -5384,7 +5354,6 @@ body:has(.modal-backdrop) .toast {
     display: none;
   }
 
-  .save-pill,
   .privacy-pill {
     display: none;
   }

@@ -1,10 +1,7 @@
-import { CheckCircle2, Loader2, Plus, ShieldCheck, Trash2 } from 'lucide-react';
+import { Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import type { TaskMeta } from '../types';
 
 interface HeaderProps {
-  sheetCount: number;
-  saveState: 'idle' | 'saving' | 'saved' | 'error';
-  processing: boolean;
   tasks: TaskMeta[];
   activeTaskId: string | null;
   onSwitchTask: (id: string) => void;
@@ -22,9 +19,6 @@ function taskLabel(task: TaskMeta, index: number): string {
 }
 
 export default function Header({
-  sheetCount,
-  saveState,
-  processing,
   tasks,
   activeTaskId,
   onSwitchTask,
@@ -71,16 +65,6 @@ export default function Header({
         </div>
 
         <button
-          className="btn primary small new-task-btn"
-          onClick={onNewTask}
-          disabled={taskDisabled}
-          title="建立新任務（需選年級及科目）"
-        >
-          <Plus size={15} />
-          <span>新任務</span>
-        </button>
-
-        <button
           className="icon-btn task-delete"
           onClick={onDeleteTask}
           disabled={taskDisabled || tasks.length === 0}
@@ -94,26 +78,16 @@ export default function Header({
           <ShieldCheck size={15} />
           <span>本機處理 · 不上傳</span>
         </div>
-        {sheetCount > 0 && (
-          <div className={`save-pill ${saveState}`}>
-            {processing || saveState === 'saving' ? (
-              <Loader2 size={14} className="spin" />
-            ) : saveState === 'error' ? (
-              <span className="save-dot" />
-            ) : (
-              <CheckCircle2 size={14} />
-            )}
-            <span>
-              {processing
-                ? '處理中'
-                : saveState === 'saving'
-                  ? '儲存中'
-                  : saveState === 'error'
-                    ? '未能自動儲存'
-                    : '已自動儲存'}
-            </span>
-          </div>
-        )}
+
+        <button
+          className="btn primary small new-task-btn"
+          onClick={onNewTask}
+          disabled={taskDisabled}
+          title="建立新任務（需選年級及科目）"
+        >
+          <Plus size={15} />
+          <span>新任務</span>
+        </button>
       </div>
     </header>
   );
