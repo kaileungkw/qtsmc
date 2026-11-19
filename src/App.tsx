@@ -5,11 +5,20 @@ import Results from './components/Results';
 import ReviewModal from './components/ReviewModal';
 import KeyEditor from './components/KeyEditor';
 import NamingModal from './components/NamingModal';
+import TaskBar from './components/TaskBar';
 import Toast, { type ToastKind } from './components/Toast';
 import Footer from './components/Footer';
 import { analyseResults, getKeyAnswers, getSheetAnswers, suggestQuestionCountFromClass, MAX_QUESTIONS } from './lib/scoring';
 import { pdfToImages } from './lib/pdf';
-import { clearSession, loadSession, saveSession } from './lib/storage';
+import { clearSession, loadSession } from './lib/storage';
+import {
+  createTaskMeta,
+  deleteTaskSession,
+  loadTaskIndex,
+  loadTaskSession,
+  saveTaskIndex,
+  saveTaskSession,
+} from './lib/tasks';
 import { downloadBackup, parseBackupFile } from './lib/export';
 import { loadRoster, type RosterData } from './lib/roster';
 import { applyRosterAndSuggestions } from './lib/assign';
@@ -23,6 +32,7 @@ import type {
   SavedSession,
   Settings,
   SheetOverrides,
+  TaskMeta,
 } from './types';
 
 const today = new Date().toISOString().slice(0, 10);
@@ -85,6 +95,7 @@ function makeSheet(blob: Blob, fileName: string, index: number): RuntimeSheet {
     name: baseName(fileName),
     className: '',
     seatNo: '',
+    candidateNo: undefined,
     isKey: false,
     status: 'idle',
     nameSource: 'default',
@@ -100,10 +111,91 @@ function placeholderImage(): Blob {
   return new Blob([svg], { type: 'image/svg+xml' });
 }
 
+function runtimeFromSaved(saved: SavedSession): RuntimeSheet[] {
+  const restored: RuntimeSheet[] = [];
+  for (const meta of saved.sheetMeta) {
+    const blob = saved.files?.[meta.id];
+    if (!blob) continue;
+    const status =
+      meta.status === 'processing'
+        ? meta.detection?.ok
+          ? 'done'
+          : 'idle'
+        : meta.status;
+    const nameSource =
+      meta.nameSource ??
+      (meta.name === baseName(meta.fileName) ? 'default' : 'manual');
+    restored.push({
+      ...meta,
+      status,
+      nameSource,
+      suggested: meta.suggested ?? {},
+      blob,
+      previewUrl: URL.createObjectURL(blob),
+    });
+  }
+  return restored;
+}
+
+interface BootResult {
+  tasks: TaskMeta[];
+  activeTaskId: string;
+  session?: SavedSession;
+  migrated: boolean;
+}
+
+function emptyTask(): { task: TaskMeta; index: { tasks: TaskMeta[]; activeTaskId: string } } {
+  const task = createTaskMeta(uid());
+  const index = { tasks: [task], activeTaskId: task.id };
+  saveTaskIndex(index);
+  return { task, index };
+}
+
+async function bootTasks(): Promise<BootResult> {
+  const index = loadTaskIndex();
+  if (index.tasks.length > 0) {
+    const active =
+      index.tasks.find((task) => task.id === index.activeTaskId) ?? index.tasks[0];
+    if (active.id !== index.activeTaskId) {
+      saveTaskIndex({ tasks: index.tasks, activeTaskId: active.id });
+    }
+    let session: SavedSession | undefined;
+    try {
+      session = await loadTaskSession(active.id);
+    } catch {
+      session = undefined;
+    }
+    return { tasks: index.tasks, activeTaskId: active.id, session, migrated: false };
+  }
+
+  // Upgrade the old single-session format into the first named task.
+  try {
+    const legacy = await loadSession();
+    if (legacy) {
+      const id = uid();
+      const title = legacy.settings.title.trim() || '上一個任務';
+      const meta = createTaskMeta(id, title, legacy.settings.subject);
+      meta.sheetCount = legacy.sheetMeta.length;
+      meta.questionCount = legacy.settings.questionCount || 0;
+      meta.updatedAt = legacy.savedAt || Date.now();
+      await saveTaskSession(id, legacy);
+      const tasks = [meta];
+      saveTaskIndex({ tasks, activeTaskId: id });
+      await clearSession().catch(() => undefined);
+      return { tasks, activeTaskId: id, session: legacy, migrated: true };
+    }
+  } catch {
+    // If migration fails, still open a clean task instead of blocking the app.
+  }
+
+  const { task, index: freshIndex } = emptyTask();
+  return { tasks: freshIndex.tasks, activeTaskId: task.id, migrated: false };
+}
+
 function headerPatch(
   sheet: RuntimeSheet,
   detection: Detection,
-): Partial<Pick<RuntimeSheet, 'className' | 'seatNo'>> {
+): Partial<Pick<RuntimeSheet, 'className' | 'seatNo' | 'candidateNo'>> {
   const header = detection.header;
   if (!header) return {};
   const previous = sheet.detection?.header;
@@ -113,14 +205,22 @@ function headerPatch(
   const seatEdited = Boolean(
     previous?.seatNo && sheet.seatNo && sheet.seatNo !== previous.seatNo,
   );
+  const rawClassNo = header.classNo
+    ? header.classNo.replace(/\D/g, '').padStart(2, '0')
+    : header.seatNo
+      ? header.seatNo.replace(/\D/g, '').slice(-2).padStart(2, '0')
+      : '';
   return {
     className:
       !classNameEdited && header.className ? header.className : sheet.className,
-    // If the header exists but one field could not be read, clear the old
-    // placeholder rather than showing a misleading default seat number.
+    // The printed Class No (last two digits) is the student number; the
+    // four-digit value is the candidate/exam number used for roster matching.
     seatNo: seatEdited
       ? sheet.seatNo
-      : header.seatNo ?? (header.className ? '' : sheet.seatNo),
+      : rawClassNo || (header.className ? '' : sheet.seatNo),
+    candidateNo: seatEdited
+      ? sheet.candidateNo
+      : header.candidateNo ?? header.seatNo ?? sheet.candidateNo,
   };
 }
 
@@ -150,6 +250,10 @@ export default function App() {
   const [rosterStatus, setRosterStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [rosterFromCache, setRosterFromCache] = useState(false);
   const rosterRequest = useRef(0);
+  const [tasks, setTasks] = useState<TaskMeta[]>([]);
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [taskBusy, setTaskBusy] = useState(false);
+  const bootRef = useRef<Promise<BootResult> | null>(null);
 
   const showToast = useCallback((message: string, kind: ToastKind = 'info') => {
     setToast({ message, kind });
@@ -192,51 +296,50 @@ export default function App() {
     setSheets((prev) => applyRosterAndSuggestions(prev, roster));
   }, [roster, hydrated]);
 
-  // Restore the previous browser-local session (images included, IndexedDB).
+  // Load the task list and restore the task that was last open. The old
+  // single-session format is migrated into the first task automatically.
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const saved = await loadSession();
-        if (!cancelled && saved) {
-          const restored: RuntimeSheet[] = [];
-          for (const meta of saved.sheetMeta) {
-            const blob = saved.files?.[meta.id];
-            if (!blob) continue;
-            const status =
-              meta.status === 'processing'
-                ? meta.detection?.ok
-                  ? 'done'
-                  : 'idle'
-                : meta.status;
-            const nameSource =
-              meta.nameSource ??
-              (meta.name === baseName(meta.fileName) ? 'default' : 'manual');
-            restored.push({
-              ...meta,
-              status,
-              nameSource,
-              suggested: meta.suggested ?? {},
-              blob,
-              previewUrl: URL.createObjectURL(blob),
+    const boot = bootRef.current ?? (bootRef.current = bootTasks());
+    boot
+      .then((result) => {
+        if (cancelled) return;
+        setTasks(result.tasks);
+        setActiveTaskId(result.activeTaskId);
+        if (result.session) {
+          const restored = runtimeFromSaved(result.session);
+          setSettings({ ...DEFAULT_SETTINGS, ...result.session.settings });
+          setOverrides(result.session.edits ?? {});
+          setKeyOverrides(result.session.keyOverrides ?? {});
+          setSheets(restored);
+          setShowManager(restored.length === 0);
+          setSaveState('saved');
+          if (restored.length > 0) {
+            showToast(
+              result.migrated
+                ? '已將上一個工作階段儲存為任務，可繼續使用。'
+                : '已載入目前任務。',
+              'success',
+            );
+          }
+        } else {
+          // If IndexedDB has the metadata but not the session (for example
+          // after a quota error), still show the task name and subject.
+          const active = result.tasks.find((task) => task.id === result.activeTaskId);
+          if (active) {
+            setSettings({
+              ...DEFAULT_SETTINGS,
+              title: active.title,
+              subject: active.subject,
+              questionCount: active.questionCount,
             });
           }
-          if (restored.length) {
-            setSheets(restored);
-            setSettings({ ...DEFAULT_SETTINGS, ...saved.settings });
-            setOverrides(saved.edits ?? {});
-            setKeyOverrides(saved.keyOverrides ?? {});
-            setShowManager(false);
-            setSaveState('saved');
-            showToast('已恢復上次的工作進度。', 'success');
-          }
         }
-      } catch {
-        // A corrupted session should not prevent the app from opening.
-      } finally {
+        setHydrated(true);
+      })
+      .catch(() => {
         if (!cancelled) setHydrated(true);
-      }
-    })();
+      });
     return () => {
       cancelled = true;
     };
@@ -276,29 +379,71 @@ export default function App() {
     [sheets, settings.questionCount, settings.passMark, settings.includeKey, overrides, keyOverrides],
   );
 
-  // Autosave metadata, detections, edits and image blobs into IndexedDB.
+  const buildSession = useCallback((): SavedSession => {
+    const sheetMeta = sheets.map(({ blob: _blob, previewUrl: _url, ...meta }) => meta);
+    const files: Record<string, Blob> = {};
+    for (const sheet of sheets) files[sheet.id] = sheet.blob;
+    return {
+      version: 1,
+      savedAt: Date.now(),
+      sheetMeta,
+      settings,
+      edits: overrides,
+      keyOverrides,
+      files,
+    };
+  }, [sheets, settings, overrides, keyOverrides]);
+
+  // Autosave the active task (including an empty task's subject/settings).
   useEffect(() => {
-    if (!hydrated || processing || sheets.length === 0) return;
+    if (!hydrated || processing || !activeTaskId) return;
     const timer = window.setTimeout(() => {
       setSaveState('saving');
-      const sheetMeta = sheets.map(({ blob: _blob, previewUrl: _url, ...meta }) => meta);
-      const files: Record<string, Blob> = {};
-      for (const sheet of sheets) files[sheet.id] = sheet.blob;
-      const session: SavedSession = {
-        version: 1,
-        savedAt: Date.now(),
-        sheetMeta,
-        settings,
-        edits: overrides,
-        keyOverrides,
-        files,
-      };
-      saveSession(session)
+      saveTaskSession(activeTaskId, buildSession())
         .then(() => setSaveState('saved'))
         .catch(() => setSaveState('error'));
-    }, 1000);
+    }, 900);
     return () => window.clearTimeout(timer);
-  }, [hydrated, processing, sheets, settings, overrides, keyOverrides]);
+  }, [hydrated, processing, activeTaskId, buildSession]);
+
+  // Keep the task switcher labels and counts in sync immediately.
+  useEffect(() => {
+    if (!activeTaskId) return;
+    setTasks((prev) => {
+      const index = prev.findIndex((task) => task.id === activeTaskId);
+      if (index < 0) return prev;
+      const task = prev[index];
+      if (
+        task.title === settings.title &&
+        task.subject === settings.subject &&
+        task.sheetCount === sheets.length &&
+        task.questionCount === settings.questionCount
+      ) {
+        return prev;
+      }
+      const next = [...prev];
+      next[index] = {
+        ...task,
+        title: settings.title,
+        subject: settings.subject,
+        sheetCount: sheets.length,
+        questionCount: settings.questionCount,
+        updatedAt: Date.now(),
+      };
+      return next;
+    });
+  }, [
+    activeTaskId,
+    settings.title,
+    settings.subject,
+    settings.questionCount,
+    sheets.length,
+  ]);
+
+  useEffect(() => {
+    if (!hydrated || !activeTaskId || tasks.length === 0) return;
+    saveTaskIndex({ tasks, activeTaskId });
+  }, [tasks, activeTaskId, hydrated]);
 
   // Load images and PDFs. PDF pages become individual sheets.
   const addFiles = useCallback(
@@ -353,6 +498,10 @@ export default function App() {
         }
         return next;
       });
+      // Give a fresh task a meaningful name from the first uploaded file.
+      setSettings((prev) =>
+        prev.title.trim() ? prev : { ...prev, title: baseName(files[0].name) },
+      );
       setShowManager(true);
     },
     [processing, sheets.length, showToast],
@@ -402,7 +551,7 @@ export default function App() {
   );
 
   const processAll = useCallback(async () => {
-    if (processing || sheets.length === 0) return;
+    if (processing || importProgress.active || sheets.length === 0) return;
     setProcessing(true);
     setShowManager(false);
     setProgress({ done: 0, total: sheets.length, current: '' });
@@ -488,7 +637,15 @@ export default function App() {
       showToast('批改完成，已計算成績及題目統計。', 'success');
     }
     setActiveTab('scores');
-  }, [processing, sheets, keyOverrides, overrides, showToast, roster]);
+  }, [
+    importProgress.active,
+    processing,
+    sheets,
+    keyOverrides,
+    overrides,
+    showToast,
+    roster,
+  ]);
 
   const editSheet = useCallback(
     (id: string, patch: Partial<Pick<RuntimeSheet, 'name' | 'className' | 'seatNo'>>) => {
@@ -586,9 +743,12 @@ export default function App() {
     setSheets((prev) => {
       const next = prev.map((sheet) => ({ ...sheet }));
       const used = new Set<string>();
-      for (const entry of entries.filter((e) => e.seatNo)) {
+      for (const entry of entries.filter((e) => e.candidateNo || e.seatNo)) {
         const target = next.find(
-          (sheet) => sheet.seatNo === entry.seatNo && !used.has(sheet.id),
+          (sheet) =>
+            !used.has(sheet.id) &&
+            ((entry.candidateNo && sheet.candidateNo === entry.candidateNo) ||
+              (!entry.candidateNo && sheet.seatNo === entry.seatNo)),
         );
         if (target) {
           target.name = entry.name;
@@ -599,7 +759,7 @@ export default function App() {
           unmatched++;
         }
       }
-      const unnumbered = entries.filter((e) => !e.seatNo);
+      const unnumbered = entries.filter((e) => !e.candidateNo && !e.seatNo);
       let nextIndex = 0;
       for (const entry of unnumbered) {
         while (nextIndex < next.length && used.has(next[nextIndex].id)) nextIndex++;
@@ -621,28 +781,181 @@ export default function App() {
     }
   }, [showToast]);
 
-  const resetWorkspace = useCallback(async () => {
-    if (processing) return;
+  const applyTaskContent = useCallback(
+    (saved: SavedSession | undefined, fallback?: TaskMeta) => {
+      const restored = saved ? runtimeFromSaved(saved) : [];
+      const nextSheets = roster
+        ? applyRosterAndSuggestions(restored, roster)
+        : restored;
+      for (const sheet of sheets) URL.revokeObjectURL(sheet.previewUrl);
+      setSheets(nextSheets);
+      if (saved) {
+        setSettings({ ...DEFAULT_SETTINGS, ...saved.settings });
+        setOverrides(saved.edits ?? {});
+        setKeyOverrides(saved.keyOverrides ?? {});
+        setSaveState('saved');
+      } else {
+        setSettings(
+          fallback
+            ? {
+                ...DEFAULT_SETTINGS,
+                title: fallback.title,
+                subject: fallback.subject,
+                questionCount: fallback.questionCount,
+              }
+            : DEFAULT_SETTINGS,
+        );
+        setOverrides({});
+        setKeyOverrides({});
+        setSaveState('idle');
+      }
+      setReviewId(null);
+      setKeyEditorOpen(false);
+      setNamingOpen(false);
+      setShowManager(!saved || nextSheets.length === 0);
+      setActiveTab('scores');
+    },
+    [roster, sheets],
+  );
+
+  const switchTask = useCallback(
+    async (id: string) => {
+      if (!id || id === activeTaskId || processing || taskBusy || importProgress.active) return;
+      if (!tasks.some((task) => task.id === id)) {
+        showToast('找不到這個任務。', 'error');
+        return;
+      }
+      setTaskBusy(true);
+      try {
+        if (activeTaskId) {
+          await saveTaskSession(activeTaskId, buildSession()).catch(() => undefined);
+        }
+        const target = tasks.find((task) => task.id === id);
+        const saved = await loadTaskSession(id);
+        applyTaskContent(saved, target);
+        setActiveTaskId(id);
+        showToast('已切換任務；影像、成績及設定會一併保留。', 'success');
+      } catch {
+        showToast('未能載入這個任務，請再試一次。', 'error');
+      } finally {
+        setTaskBusy(false);
+      }
+    },
+    [
+      activeTaskId,
+      applyTaskContent,
+      buildSession,
+      importProgress.active,
+      processing,
+      showToast,
+      taskBusy,
+      tasks,
+    ],
+  );
+
+  const createNewTask = useCallback(async () => {
+    if (processing || taskBusy || importProgress.active) return;
+    setTaskBusy(true);
+    try {
+      if (activeTaskId) {
+        await saveTaskSession(activeTaskId, buildSession()).catch(() => undefined);
+      }
+      const meta = createTaskMeta(uid());
+      for (const sheet of sheets) URL.revokeObjectURL(sheet.previewUrl);
+      setSheets([]);
+      setSettings({
+        ...DEFAULT_SETTINGS,
+        date: new Date().toISOString().slice(0, 10),
+      });
+      setOverrides({});
+      setKeyOverrides({});
+      setReviewId(null);
+      setKeyEditorOpen(false);
+      setNamingOpen(false);
+      setShowManager(true);
+      setSaveState('idle');
+      setActiveTab('scores');
+      setTasks((prev) => [...prev, meta]);
+      setActiveTaskId(meta.id);
+      showToast('已建立新任務；舊任務可從上方的任務選單切換。', 'success');
+    } finally {
+      setTaskBusy(false);
+    }
+  }, [
+    activeTaskId,
+    buildSession,
+    importProgress.active,
+    processing,
+    sheets,
+    showToast,
+    taskBusy,
+  ]);
+
+  const clearCurrentSheets = useCallback(() => {
+    if (processing || importProgress.active || sheets.length === 0) return;
     if (
       !window.confirm(
-        '確定要清除目前所有答題紙、批改結果及本機儲存的工作階段嗎？此動作不可復原。',
+        '確定清除目前任務的所有答題紙及批改結果？其他任務不會受影響。',
       )
     ) {
       return;
     }
     for (const sheet of sheets) URL.revokeObjectURL(sheet.previewUrl);
-    await clearSession().catch(() => undefined);
     setSheets([]);
-    setSettings(DEFAULT_SETTINGS);
     setOverrides({});
     setKeyOverrides({});
     setReviewId(null);
-    setKeyEditorOpen(false);
     setShowManager(true);
-    setSaveState('idle');
-    setActiveTab('scores');
-    showToast('已清除工作階段。', 'success');
-  }, [processing, sheets, showToast]);
+    setSaveState('saving');
+    showToast('已清除目前任務的答題紙；可重新上載。', 'success');
+  }, [importProgress.active, processing, sheets, showToast]);
+
+  const deleteCurrentTask = useCallback(async () => {
+    if (!activeTaskId || processing || taskBusy || importProgress.active) return;
+    const activeIndex = tasks.findIndex((task) => task.id === activeTaskId);
+    if (activeIndex < 0) return;
+    const active = tasks[activeIndex];
+    const label = active.title.trim() || active.subject.trim() || '目前任務';
+    if (
+      !window.confirm(
+        `確定刪除「${label}」？此任務的影像、成績及設定會一併刪除，不能復原。`,
+      )
+    ) {
+      return;
+    }
+    setTaskBusy(true);
+    try {
+      await deleteTaskSession(activeTaskId);
+      const remaining = tasks.filter((task) => task.id !== activeTaskId);
+      if (remaining.length === 0) {
+        const meta = createTaskMeta(uid());
+        applyTaskContent(undefined);
+        setTasks([meta]);
+        setActiveTaskId(meta.id);
+        showToast('已刪除任務，並建立一個新的空白任務。', 'success');
+      } else {
+        const nextIndex = Math.min(activeIndex, remaining.length - 1);
+        const next = remaining[nextIndex];
+        const saved = await loadTaskSession(next.id).catch(() => undefined);
+        applyTaskContent(saved, next);
+        setTasks(remaining);
+        setActiveTaskId(next.id);
+        showToast('已刪除目前任務，並切換到下一個任務。', 'success');
+      }
+    } catch {
+      showToast('未能刪除任務，請再試一次。', 'error');
+    } finally {
+      setTaskBusy(false);
+    }
+  }, [
+    activeTaskId,
+    applyTaskContent,
+    importProgress.active,
+    processing,
+    showToast,
+    taskBusy,
+    tasks,
+  ]);
 
   const backup = useCallback(() => {
     if (!sheets.length) return;
@@ -665,7 +978,7 @@ export default function App() {
       try {
         if (
           sheets.length &&
-          !window.confirm('載入備份會取代目前的工作階段，確定繼續嗎？')
+          !window.confirm('載入備份會取代目前任務的答題紙及成績，確定繼續嗎？')
         ) {
           return;
         }
@@ -710,8 +1023,19 @@ export default function App() {
       <Header
         sheetCount={sheets.length}
         saveState={saveState}
-        processing={processing}
-        onReset={resetWorkspace}
+        processing={processing || taskBusy || importProgress.active}
+        onNewTask={() => void createNewTask()}
+      />
+
+      <TaskBar
+        tasks={tasks}
+        activeTaskId={activeTaskId}
+        subject={settings.subject}
+        onSwitch={(id) => void switchTask(id)}
+        onNew={() => void createNewTask()}
+        onDelete={() => void deleteCurrentTask()}
+        onSubjectChange={(subject) => updateSettings({ subject })}
+        disabled={!hydrated || processing || taskBusy || importProgress.active}
       />
 
       <main>
@@ -786,7 +1110,8 @@ export default function App() {
             onMove={moveSheet}
             onSetKey={setKeySheet}
             onProcess={processAll}
-            onClear={resetWorkspace}
+            onClear={clearCurrentSheets}
+            onNewTask={() => void createNewTask()}
             onImportBackup={importBackup}
           />
         )}
@@ -883,7 +1208,7 @@ export default function App() {
         )}
       </main>
 
-      <Footer onReset={resetWorkspace} />
+      <Footer onDeleteTask={() => void deleteCurrentTask()} />
 
       {reviewSheet && (
         <ReviewModal
@@ -931,6 +1256,7 @@ export default function App() {
             name: s.name,
             className: s.className,
             seatNo: s.seatNo,
+            candidateNo: s.candidateNo,
           }))}
           onApply={applyNames}
           onClose={() => setNamingOpen(false)}

@@ -1,10 +1,10 @@
 import { Lock, MousePointerClick, ScanLine, Table2 } from 'lucide-react';
 
 interface FooterProps {
-  onReset: () => void;
+  onDeleteTask: () => void;
 }
 
-export default function Footer({ onReset }: FooterProps) {
+export default function Footer({ onDeleteTask }: FooterProps) {
   return (
     <footer className="site-footer" id="guide">
       <div className="guide-grid">
@@ -40,8 +40,8 @@ export default function Footer({ onReset }: FooterProps) {
           所有掃描影像及成績只會留在你的瀏覽器（IndexedDB），不會傳送到任何伺服器。
         </div>
         <div className="footer-actions">
-          <button className="text-btn" onClick={onReset}>
-            清除本機工作階段
+          <button className="text-btn" onClick={onDeleteTask}>
+            刪除目前任務
           </button>
           <span>© {new Date().getFullYear()} QTSMC</span>
         </div>

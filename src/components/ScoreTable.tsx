@@ -165,7 +165,7 @@ export default function ScoreTable({
       </div>
 
       <div className="mobile-scroll-hint">← 左右滑動查看 Q1–Q{questionCount} →</div>
-      <div className="table-scroller">
+      <div className="table-scroller score-table-scroller">
         <table className="score-table">
           <thead>
             <tr>
@@ -333,12 +333,103 @@ export default function ScoreTable({
         </table>
       </div>
 
+      <div className="mobile-score-card-list">
+        {rows.map((student) => {
+          const sheet = sheetById.get(student.id);
+          const index = analysis.students.findIndex((s) => s.id === student.id);
+          const needsReview = !student.isKey && (student.lowCount > 0 || student.multiCount > 0);
+          const suggested = student.suggested;
+          const suggestedAny = Boolean(
+            suggested?.className || suggested?.seatNo || suggested?.name,
+          );
+          const statusLabel = student.isKey
+            ? '滿分'
+            : needsReview
+              ? '覆核'
+              : suggestedAny
+                ? '系統建議'
+                : student.blankCount > 0
+                  ? '有 blank'
+                  : '正常';
+          const statusClass = student.isKey
+            ? 'key'
+            : needsReview
+              ? 'review'
+              : suggestedAny
+                ? 'suggested'
+                : student.blankCount > 0
+                  ? 'blank'
+                  : 'ok';
+          return (
+            <article
+              key={student.id}
+              className={`mobile-score-card ${student.isKey ? 'is-key' : ''}`}
+              onClick={() => onReview(student.id)}
+            >
+              <div className="msc-head">
+                <span className="msc-index">{index + 1}</span>
+                <div className="msc-name">
+                  <strong className={suggested?.name ? 'suggested-text' : undefined}>
+                    {student.name || sheet?.fileName || '未命名'}
+                  </strong>
+                  <span className={`msc-sub ${suggested?.className || suggested?.seatNo ? 'suggested-text' : ''}`}>
+                    {student.className || '—'} · {student.seatNo || '—'}
+                  </span>
+                </div>
+                <span className={`status-chip ${statusClass}`}>{statusLabel}</span>
+                <div className="msc-score">
+                  <strong>{student.isKey ? student.total : student.score}</strong>
+                  <span>/{student.total} · {student.isKey ? 100 : student.percent.toFixed(1)}%</span>
+                </div>
+                <button
+                  className="row-review-btn"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onReview(student.id);
+                  }}
+                  aria-label={`查看 ${student.name || '學生'} 的標記圖`}
+                >
+                  <Eye size={13} />
+                </button>
+              </div>
+              <div className="msc-meta">
+                <span>blank {student.blankCount}</span>
+                <span>multi {student.multiCount}</span>
+                <span>低信心 {student.lowCount}</span>
+                {sheet && <span className="msc-file">{sheet.fileName}</span>}
+              </div>
+              <div className="msc-answers">
+                {Array.from({ length: questionCount }, (_, i) => {
+                  const q = i + 1;
+                  const value = student.answers[q] ?? 'blank';
+                  const cls = student.isKey
+                    ? 'key'
+                    : value === 'blank'
+                      ? 'blank'
+                      : value === 'multi'
+                        ? 'multi'
+                        : student.correct[q]
+                          ? 'correct'
+                          : 'wrong';
+                  return (
+                    <span key={q} className={`msc-answer ${cls}`} title={`Q${q}：${value}`}>
+                      <b>Q{q}</b>
+                      {value}
+                    </span>
+                  );
+                })}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+
       <div className="table-footer">
         <span>
           顯示 {rows.length} / {analysis.students.length} 張
         </span>
         <span>
-          <ArrowUpRight size={13} /> 按學生姓名或班別可直接修改
+          <ArrowUpRight size={13} /> 點擊學生卡或列可覆核／修改資料
         </span>
       </div>
     </div>

@@ -4,14 +4,14 @@ interface HeaderProps {
   sheetCount: number;
   saveState: 'idle' | 'saving' | 'saved' | 'error';
   processing: boolean;
-  onReset: () => void;
+  onNewTask: () => void;
 }
 
 export default function Header({
   sheetCount,
   saveState,
   processing,
-  onReset,
+  onNewTask,
 }: HeaderProps) {
   return (
     <header className="site-header">
@@ -53,12 +53,12 @@ export default function Header({
         {sheetCount > 0 && (
           <button
             className="icon-text-btn"
-            onClick={onReset}
+            onClick={onNewTask}
             disabled={processing}
-            title="清除目前工作階段"
+            title="建立新任務；現有任務會保留"
           >
             <RotateCcw size={15} />
-            <span>新工作</span>
+            <span>新任務</span>
           </button>
         )}
       </div>

@@ -47,8 +47,19 @@ export interface Detection {
   elapsedMs: number;
 }
 
+export interface TaskMeta {
+  id: string;
+  title: string;
+  subject: string;
+  sheetCount: number;
+  questionCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface NamingEntry {
   seatNo?: string;
+  candidateNo?: string;
   name: string;
 }
 
@@ -68,6 +79,7 @@ export interface SheetRecord {
   name: string;
   className: string;
   seatNo: string;
+  candidateNo?: string;
   isKey: boolean;
   status: SheetStatus;
   detection?: Detection;
@@ -124,6 +136,7 @@ export interface StudentResult {
   name: string;
   className: string;
   seatNo: string;
+  candidateNo?: string;
   isKey: boolean;
   answers: Record<number, AnswerValue>;
   correct: Record<number, boolean>;

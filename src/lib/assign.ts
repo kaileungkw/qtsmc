@@ -50,18 +50,23 @@ export function applyRosterAndSuggestions<T extends SheetRecord>(
     if (!sheet.detection?.ok) continue;
     const header = sheet.detection.header;
     const cls = sheet.className || header?.className || '';
-    const seat = sheet.seatNo || header?.seatNo || '';
-    if (!cls && !seat) continue;
-    const entry = lookupRoster(roster, cls, seat);
+    const seat = sheet.seatNo || header?.classNo || '';
+    const candidate = sheet.candidateNo || header?.candidateNo || header?.seatNo || '';
+    if (!cls && !seat && !candidate) continue;
+    const candidateEntry = candidate
+      ? roster.byExam.get(Number(String(candidate).replace(/\D/g, '').slice(-4)))
+      : undefined;
+    const entry = lookupRoster(roster, cls, seat) ?? candidateEntry;
     if (!entry) continue;
     if (!sheet.className) {
       sheet.className = entry.class;
       sheet.suggested = withSuggested(sheet, { className: false });
     }
     if (!sheet.seatNo) {
-      sheet.seatNo = padExamId(entry);
+      sheet.seatNo = String(entry.num).padStart(2, '0');
       sheet.suggested = withSuggested(sheet, { seatNo: false });
     }
+    if (!sheet.candidateNo) sheet.candidateNo = padExamId(entry);
     // If the seat itself was only suggested, let the suggestion pass below
     // decide; do not silently turn a guess into a confirmed roster match.
     if (sheet.suggested?.seatNo) continue;
@@ -75,9 +80,12 @@ export function applyRosterAndSuggestions<T extends SheetRecord>(
   // 2) Missing class/seat: use the neighbouring sheets in upload order.
   const used = new Set<number>();
   for (const sheet of next) {
-    if (sheet.suggested?.seatNo) continue;
-    const digits = String(sheet.seatNo ?? '').replace(/\D/g, '');
-    if (digits.length >= 4) used.add(Number(digits.slice(-4)));
+    const entry =
+      (sheet.candidateNo
+        ? roster.byExam.get(Number(String(sheet.candidateNo).replace(/\D/g, '').slice(-4)))
+        : undefined) ?? lookupRoster(roster, sheet.className, sheet.seatNo);
+    if (sheet.suggested?.seatNo || !entry) continue;
+    used.add(entry.examId);
   }
 
   for (let i = 0; i < next.length; i++) {
@@ -117,17 +125,23 @@ export function applyRosterAndSuggestions<T extends SheetRecord>(
     }
     if (!cls) continue;
 
+    const seatToExam = (target: typeof prev): number | undefined => {
+      if (!target) return undefined;
+      if (target.candidateNo) {
+        const value = Number(String(target.candidateNo).replace(/\D/g, '').slice(-4));
+        if (Number.isFinite(value)) return value;
+      }
+      const rosterEntry = lookupRoster(roster, target.className, target.seatNo);
+      return rosterEntry?.examId;
+    };
+    const prevExam = seatToExam(prev);
+    const afterExam = seatToExam(after);
     const prevEntry =
-      prev && prev.className === cls
-        ? {
-            seat: Number(String(prev.seatNo).replace(/\D/g, '').slice(-4)),
-            nextSeat: Number(String(after?.seatNo ?? '').replace(/\D/g, '').slice(-4)),
-          }
+      prev && prev.className === cls && prevExam
+        ? { seat: prevExam }
         : undefined;
     const afterEntry =
-      after && after.className === cls
-        ? Number(String(after.seatNo).replace(/\D/g, '').slice(-4))
-        : undefined;
+      after && after.className === cls && afterExam ? afterExam : undefined;
 
     let start: number | undefined;
     let direction: 1 | -1 = 1;
@@ -150,7 +164,8 @@ export function applyRosterAndSuggestions<T extends SheetRecord>(
       sheet.className = entry.class;
       sheet.suggested = withSuggested(sheet, { className: true });
     }
-    sheet.seatNo = padExamId(entry);
+    sheet.seatNo = String(entry.num).padStart(2, '0');
+    sheet.candidateNo = padExamId(entry);
     sheet.suggested = withSuggested(sheet, { seatNo: true });
     used.add(entry.examId);
     if (canReplaceName(sheet)) {

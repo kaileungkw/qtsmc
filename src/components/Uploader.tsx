@@ -29,6 +29,7 @@ interface UploaderProps {
   onSetKey: (id: string) => void;
   onProcess: () => void;
   onClear: () => void;
+  onNewTask: () => void;
   onImportBackup: (file: File) => void;
 }
 
@@ -43,6 +44,7 @@ export default function Uploader({
   onSetKey,
   onProcess,
   onClear,
+  onNewTask,
   onImportBackup,
 }: UploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -82,9 +84,15 @@ export default function Uploader({
             </button>
           )}
           {sheets.length > 0 && (
-            <button className="text-btn danger" onClick={onClear} disabled={busy}>
-              清除全部
-            </button>
+            <>
+              <button className="btn ghost small" onClick={onNewTask} disabled={busy}>
+                <Plus size={14} />
+                新任務
+              </button>
+              <button className="text-btn danger" onClick={onClear} disabled={busy}>
+                清除本任務
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -131,7 +139,7 @@ export default function Uploader({
             {importProgress.active
               ? importProgress.label
               : sheets.length
-                ? '可繼續加入更多答題紙；第一張預設為答案卷。'
+                ? '可繼續加入更多頁面；如要批改另一份卷，請按「新任務」。'
                 : '一次過上載整班；JPG / PNG / PDF 均可。'}
           </span>
         </div>
