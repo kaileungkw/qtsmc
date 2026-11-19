@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>QTSMC 答題紙批改工具 · 使用手冊</title>
+<style>
+  :root{
+    --ink:#1e2a28;
+    --muted:#5d6b67;
+    --green:#0f5f52;
+    --green2:#177a68;
+    --soft:#f2f7f4;
+    --cream:#fbf8f1;
+    --line:#e4dfd3;
+    --gold:#a97c2f;
+    --red:#a9524a;
+    --purple:#6c5a93;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:#ffffff;}
+  body{
+    font-family:"Microsoft JhengHei","PingFang TC","Noto Sans TC","Microsoft YaHei",sans-serif;
+    color:var(--ink);
+    font-size:10.4pt;
+    line-height:1.78;
+    -webkit-font-smoothing:antialiased;
+  }
+  @page{size:A4;margin:0;}
+  .page{
+    width:210mm;
+    min-height:297mm;
+    padding:16mm 18mm 13mm;
+    background:#ffffff;
+    page-break-after:always;
+    display:flex;
+    flex-direction:column;
+    position:relative;
+  }
+  .page:last-child{page-break-after:auto;}
+
+  /* ---------- shared ---------- */
+  .page-head{
+    display:flex;
+    align-items:flex-end;
+    justify-content:space-between;
+    border-bottom:1px solid var(--line);
+    padding-bottom:5mm;
+    margin-bottom:8mm;
+  }
+  .page-head .kicker{
+    font-size:8pt;
+    letter-spacing:.18em;
+    color:var(--green);
+    font-weight:700;
+  }
+  .page-head h2{
+    margin:1mm 0 0;
+    font-size:19pt;
+    line-height:1.25;
+    letter-spacing:.01em;
+  }
+  .page-head .head-note{
+    font-size:8.5pt;
+    color:var(--muted);
+    text-align:right;
+    line-height:1.6;
+  }
+  .page-foot{
+    margin-top:auto;
+    padding-top:6mm;
+    border-top:1px solid var(--line);
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    font-size:8pt;
+    color:#8a948f;
+    letter-spacing:.04em;
+  }
+  .page-foot b{color:var(--green);font-weight:700;}
+  .lead{font-size:11pt;color:#374541;line-height:1.85;margin:0 0 5mm;}
+  .muted{color:var(--muted);}
+  .small{font-size:8.8pt;line-height:1.7;}
+  strong{font-weight:700;}
+  .accent{color:var(--green);}
+
+  /* ---------- cover ---------- */
+  .cover{
+    background:var(--cream);
+    padding:18mm 20mm 15mm;
+    justify-content:flex-start;
+  }
+  .cover-top{display:flex;align-items:center;gap:4mm;}
+  .brand-mark{
+    width:13mm;height:13mm;border-radius:3.5mm;
+    background:var(--green);color:#fff;
+    display:flex;align-items:center;justify-content:center;
+    font-size:17pt;font-weight:700;line-height:1;
+  }
+  .brand-word{font-size:12pt;font-weight:700;letter-spacing:.12em;}
+  .brand-tag{margin-left:auto;font-size:8pt;color:var(--muted);letter-spacing:.14em;}
+  .cover-main{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    padding-top:0;
+  }
+  .cover .eyebrow{
+    font-size:9pt;letter-spacing:.28em;color:var(--green);font-weight:700;margin-bottom:5mm;
+  }
+  .cover h1{
+    margin:0 0 4mm;
+    font-size:38pt;
+    line-height:1.16;
+    letter-spacing:.015em;
+    color:#16211f;
+  }
+  .cover-sub{
+    margin:0;
+    font-size:13.5pt;
+    line-height:1.7;
+    color:#40514c;
+    max-width:150mm;
+  }
+  .cover-rule{width:28mm;height:2.2pt;background:var(--green);margin:9mm 0 8mm;}
+  .cover-steps{
+    display:flex;
+    gap:4mm;
+    flex-wrap:wrap;
+  }
+  .cover-step{
+    font-size:9.4pt;
+    color:#34433f;
+    background:#ffffff;
+    border:1px solid #e6e0d2;
+    border-radius:10mm;
+    padding:1.6mm 4.2mm;
+    letter-spacing:.02em;
+  }
+  .cover-step b{color:var(--green);margin-right:1.5mm;font-size:9pt;}
+  .cover-bottom{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    gap:10mm;
+    border-top:1px solid #e3ddcf;
+    padding-top:5mm;
+  }
+  .cover-note{font-size:9pt;color:#5b6864;line-height:1.75;}
+  .cover-meta{text-align:right;font-size:9pt;color:#5b6864;line-height:1.75;}
+  .cover-meta b{color:var(--green);}
+
+  /* ---------- quick guide ---------- */
+  .quick-intro{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:8mm;
+    margin-bottom:6mm;
+  }
+  .quick-intro p{margin:0;max-width:118mm;}
+  .quick-badge{
+    flex:0 0 auto;
+    border:1px solid #d9e6df;
+    background:var(--soft);
+    border-radius:3mm;
+    padding:3mm 4.5mm;
+    text-align:center;
+    color:var(--green);
+  }
+  .quick-badge b{display:block;font-size:16pt;line-height:1.1;}
+  .quick-badge span{font-size:7.6pt;letter-spacing:.1em;}
+  .step-list{display:flex;flex-direction:column;}
+  .step{
+    display:grid;
+    grid-template-columns:15mm 1fr;
+    gap:5mm;
+    padding:3.6mm 0;
+    border-top:1px solid #eee9dd;
+  }
+  .step:first-child{border-top:none;}
+  .step-num{
+    width:12mm;height:12mm;border-radius:50%;
+    background:var(--green);color:#fff;
+    display:flex;align-items:center;justify-content:center;
+    font-size:10pt;font-weight:700;letter-spacing:.03em;
+    margin-top:.6mm;
+  }
+  .step h3{margin:0 0 .8mm;font-size:12.6pt;line-height:1.35;}
+  .step p{margin:0;color:#485651;font-size:9.7pt;line-height:1.72;}
+  .step p b{color:var(--green);font-weight:700;}
+  .strip{
+    margin-top:5mm;
+    border:1px solid #e8e2d5;
+    background:#fff;
+    border-radius:2.5mm;
+    padding:2.5mm 3mm;
+    text-align:center;
+  }
+  .strip img{display:block;width:100%;margin:0 auto;}
+  .strip-cap{font-size:7.8pt;color:#7b8681;margin-top:1.6mm;letter-spacing:.03em;}
+  .note-box{
+    margin-top:5mm;
+    background:var(--soft);
+    border-left:2.5pt solid var(--green);
+    padding:3.5mm 4.5mm;
+    font-size:9.2pt;
+    line-height:1.72;
+    color:#31423d;
+  }
+
+  /* ---------- tables ---------- */
+  table{width:100%;border-collapse:collapse;}
+  th{
+    text-align:left;
+    font-size:8.4pt;
+    letter-spacing:.06em;
+    color:var(--green);
+    background:#f4f8f5;
+    padding:2.4mm 3mm;
+    border-bottom:1px solid #cfded7;
+    font-weight:700;
+  }
+  td{
+    padding:2.5mm 3mm;
+    border-bottom:1px solid #ece7db;
+    vertical-align:top;
+    font-size:9.1pt;
+    line-height:1.65;
+  }
+  td.item{font-weight:700;color:#23322e;white-space:nowrap;}
+  td.item span{display:block;font-weight:400;font-size:7.8pt;color:#8a948f;letter-spacing:.02em;margin-top:.4mm;}
+
+  /* ---------- screenshot pages ---------- */
+  .shot{
+    border:1px solid #e2ddd1;
+    border-radius:2.5mm;
+    background:#fff;
+    padding:2mm;
+  }
+  .shot img{display:block;width:100%;border-radius:1.6mm;}
+  .shot.compact{width:96%;margin:0 auto;}
+  .page-tight .page-head{margin-bottom:6mm;}
+  .page-tight .two-col{margin-top:4mm !important;}
+  .shot-cap{
+    display:flex;
+    justify-content:space-between;
+    gap:4mm;
+    font-size:7.8pt;
+    color:#7b8681;
+    margin-top:1.8mm;
+    padding:0 .5mm;
+  }
+  .anno-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:4mm 8mm;
+    margin-top:5mm;
+  }
+  .anno{
+    display:grid;
+    grid-template-columns:6.5mm 1fr;
+    gap:2.5mm;
+    font-size:9.1pt;
+    line-height:1.65;
+    color:#3d4c47;
+  }
+  .anno b{
+    width:6.5mm;height:6.5mm;border-radius:50%;
+    background:#eaf2ed;color:var(--green);
+    display:flex;align-items:center;justify-content:center;
+    font-size:8pt;font-weight:700;
+  }
+  .legend-line{font-size:8.6pt;color:#5d6b67;margin-top:3mm;line-height:1.7;}
+  .legend-line i{display:inline-block;width:2.2mm;height:2.2mm;border-radius:.5mm;margin:0 1mm 0 3mm;vertical-align:.2mm;}
+  .legend-line i:first-child{margin-left:0;}
+
+  /* ---------- export ---------- */
+  .two-col{display:grid;grid-template-columns:1.02fr 1fr;gap:8mm;}
+  .panel-title{
+    font-size:9pt;font-weight:700;color:var(--green);
+    letter-spacing:.08em;margin:0 0 2.5mm;
+    padding-bottom:1.5mm;border-bottom:1px solid #e4dfd3;
+  }
+  ul.clean{margin:0;padding:0;list-style:none;}
+  ul.clean li{
+    position:relative;
+    padding-left:4.2mm;
+    font-size:9.1pt;
+    line-height:1.7;
+    margin-bottom:1.8mm;
+    color:#3d4c47;
+  }
+  ul.clean li::before{
+    content:"";
+    position:absolute;left:0;top:2.9mm;
+    width:1.5mm;height:1.5mm;border-radius:50%;
+    background:#b9cec5;
+  }
+  .tree{
+    background:#f7faf8;
+    border:1px solid #e0e9e3;
+    border-radius:2.5mm;
+    padding:3.2mm 4.5mm;
+    font-family:"Consolas","Courier New",monospace;
+    font-size:7.9pt;
+    line-height:1.65;
+    color:#2f443d;
+    white-space:pre;
+  }
+  .tree b{color:var(--green);font-weight:700;}
+  .tree .cap{color:#8a948f;}
+  .sheet-line{
+    display:flex;flex-wrap:wrap;gap:1.6mm;margin-top:2mm;
+  }
+  .sheet-line span{
+    font-size:7.9pt;color:#40514c;background:#f2f7f4;
+    border:1px solid #dce8e1;border-radius:1.2mm;padding:.5mm 2.2mm;
+  }
+
+  /* ---------- last page ---------- */
+  .last-grid{display:grid;grid-template-columns:1fr 1fr;gap:6mm 9mm;}
+  .last-card{
+    border:1px solid #e6e0d3;
+    border-radius:2.5mm;
+    padding:4mm 4.5mm;
+    background:#fff;
+  }
+  .last-card h3{
+    font-size:10.5pt;margin:0 0 2.5mm;color:#23322e;
+  }
+  .last-card h3 span{color:var(--green);font-size:8pt;letter-spacing:.08em;display:block;margin-bottom:.6mm;}
+  .last-card ul.clean li{font-size:8.7pt;margin-bottom:1.4mm;}
+  .check-list{margin:0;padding:0;list-style:none;}
+  .check-list li{
+    font-size:8.9pt;line-height:1.62;color:#3d4c47;
+    padding-left:6mm;position:relative;margin-bottom:1.6mm;
+  }
+  .check-list li::before{
+    content:"✓";
+    position:absolute;left:0;top:0;
+    color:var(--green);font-weight:700;font-size:9pt;
+  }
+  .privacy{
+    margin-top:auto;
+    background:var(--soft);
+    border-top:2pt solid #cfe0d8;
+    padding:4mm 5mm;
+    font-size:8.4pt;
+    line-height:1.75;
+    color:#40514c;
+  }
+  .privacy b{color:var(--green);}
+  .page:last-child .page-foot{margin-top:6mm;}
+</style>
+</head>
+<body>
+
+<!-- ============ 1 COVER ============ -->
+<section class="page cover">
+  <div class="cover-top">
+    <div class="brand-mark">Q</div>
+    <div class="brand-word">QTSMC</div>
+    <div class="brand-tag">答題紙批改工具 · 校本使用</div>
+  </div>
+
+  <div class="cover-main">
+    <div class="eyebrow">使用手冊</div>
+    <h1>答題紙批改工具</h1>
+    <p class="cover-sub">上載整疊答題紙 PDF，逐張覆核系統標示的問題，再匯出成績報告。</p>
+    <div class="cover-rule"></div>
+    <div class="cover-steps">
+      <div class="cover-step"><b>01</b>上載 PDF</div>
+      <div class="cover-step"><b>02</b>看「需要留意」</div>
+      <div class="cover-step"><b>03</b>逐張覆核</div>
+      <div class="cover-step"><b>04</b>完成覆核</div>
+      <div class="cover-step"><b>05</b>匯出及解壓</div>
+    </div>
+  </div>
+
+  <div class="cover-bottom">
+    <div class="cover-note">
+      4 欄 × 20 行選擇題答題紙<br>
+      桌面、平板及手機均可使用
+    </div>
+    <div class="cover-meta">
+      <b>qtsmc.vercel.app</b><br>
+      版本 v2.9.0 · 2026 年 11 月
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2 QUICK GUIDE ============ -->
+<section class="page">
+  <div class="page-head">
+    <div>
+      <div class="kicker">QUICK START</div>
+      <h2>快速指南</h2>
+    </div>
+    <div class="head-note">第一次使用，只需跟以下五步。<br>其他功能可在熟悉流程後再看。</div>
+  </div>
+
+  <div class="quick-intro">
+    <p class="lead">由一個 PDF，到一份可以交出去的成績報告，整個流程就在同一個頁面完成。</p>
+    <div class="quick-badge"><b>5</b><span>STEPS</span></div>
+  </div>
+
+  <div class="step-list">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div>
+        <h3>建立任務，上載 PDF</h3>
+        <p>選擇<b>年級</b>及<b>科目</b>，把整疊答題紙拖進來。支援 PDF、JPG、PNG；PDF 會自動拆頁。<b>第一張自動定為答案卷</b>，只作標準，不計入統計。</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div>
+        <h3>按「開始自動批改」</h3>
+        <p>系統會逐頁找出答題框，讀取班別、學號及每題答案，並自動判斷題數。頁數較多時，請等待進度完成。</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div>
+        <h3>逐項處理「需要留意」</h3>
+        <p>畫面會列出有問題的學生：<b>姓名不詳</b>、<b>多選</b>、<b>未填</b>、<b>班別／學號重複</b>等。點任何一項，成績總表會自動篩選出相關學生。</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">04</div>
+      <div>
+        <h3>逐張覆核，按「完成覆核」</h3>
+        <p>打開學生的標記圖，核對有問題的題目；有需要便改正答案、姓名、班別或學號。確認後按<b>「完成覆核」</b>，狀態會變成「覆核完成」。</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">05</div>
+      <div>
+        <h3>匯出，解壓即可使用</h3>
+        <p>按「匯出成績」，下載 Excel（.xlsx）或「所有報告及 PDF」（.zip）。解壓後會有成績表、CSV 及你上載的原始 PDF。</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="strip">
+    <img src="assets/04b-attention-crop.png" alt="需要留意提示列">
+    <div class="strip-cap">批改完成後，畫面頂部會出現「需要留意」提示列；數字代表相關學生的人數。</div>
+  </div>
+
+  <div class="note-box">
+    <strong>只需記住這一句：</strong>上載 → 看「需要留意」→ 逐張覆核 → 完成覆核 → 匯出。其餘設定都有預設值，可以稍後再調整。
+  </div>
+
+  <div class="page-foot"><span><b>QTSMC</b> 答題紙批改工具 · 使用手冊</span><span>2</span></div>
+</section>
+
+<!-- ============ 3 WHAT TO CHECK ============ -->
+<section class="page">
+  <div class="page-head">
+    <div>
+      <div class="kicker">WHAT TO CHECK</div>
+      <h2>「需要留意」是甚麼</h2>
+    </div>
+    <div class="head-note">每一項都可以點擊，<br>直接跳到相關學生。</div>
+  </div>
+
+  <p class="lead">批改後，系統只會把<strong>不肯定或需要人手確認</strong>的地方列出來。以下是最常見的幾種，逐項處理即可。</p>
+
+  <table>
+    <thead>
+      <tr><th style="width:34mm;">你會見到</th><th style="width:56mm;">代表甚麼</th><th>如何處理</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="item">姓名不詳<span>無填名</span></td>
+        <td>名單找不到對應的班別／學號，或姓名欄空白。</td>
+        <td>在姓名欄直接輸入；插班生未有名單記錄，留空也可以。</td>
+      </tr>
+      <tr>
+        <td class="item">多選<span>double choices</span></td>
+        <td>同一題有兩個或以上填畫，系統不能確定哪一個是答案。</td>
+        <td>開啟覆核，逐題選出正確的一項；若學生真的多選，按答案卷的標準處理。</td>
+      </tr>
+      <tr>
+        <td class="item">未填<span>blank</span></td>
+        <td>該題沒有偵測到填畫，可能是真的空白，也可能是筆跡太淡。</td>
+        <td>先按「增強對比」或「原圖」查看；確認空白可保留「未填」，有答案便補選。</td>
+      </tr>
+      <tr>
+        <td class="item">班別／學號<span>重複名、重複學號</span></td>
+        <td>班別或學號讀不到，或<strong>同一班</strong>有兩張卷填了相同的班別及學號（例如重複掃描或寫錯）。</td>
+        <td>在成績總表或覆核畫面直接改正；改正後姓名會自動重新配對。</td>
+      </tr>
+      <tr>
+        <td class="item">存疑</td>
+        <td>系統不確定該題的填畫（筆跡淡、陰影、擦不乾淨）。</td>
+        <td>一定要看原圖後再決定；修正後該題會由「存疑」移除。</td>
+      </tr>
+      <tr>
+        <td class="item">漏填學號<span>系統補上的值</span></td>
+        <td>黃色欄位是系統自動補上的班別、學號或姓名，通常是因為學號沒有填畫或讀不到。</td>
+        <td>對照名單確認；正確才保留，不確定便直接改正或清空。</td>
+      </tr>
+      <tr>
+        <td class="item">答案未設定</td>
+        <td>答案卷有題目未設定答案，該題不會有人答對。</td>
+        <td>按「答案卷」開啟編輯器，補上答案即可。</td>
+      </tr>
+      <tr>
+        <td class="item">未能辨識</td>
+        <td>整頁讀不到答題框，通常是掃描不完整或影像太差。</td>
+        <td>檢查該頁是否完整入框；必要時重掃該頁。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="note-box">
+    <strong>兩個容易混淆的地方：</strong>不同班級出現同一學號是正常的，只有<strong>同一班內</strong>重複才算「班別／學號」問題；「姓名不詳」和「班別／學號」可以同時出現在同一位學生身上，通常是因為班別或學號讀不到，導致未能配對姓名。
+  </div>
+
+  <div class="page-foot"><span><b>QTSMC</b> 答題紙批改工具 · 使用手冊</span><span>3</span></div>
+</section>
+
+<!-- ============ 4 REVIEW ============ -->
+<section class="page">
+  <div class="page-head">
+    <div>
+      <div class="kicker">REVIEW</div>
+      <h2>逐張覆核</h2>
+    </div>
+    <div class="head-note">點學生的眼睛按鈕，<br>或直接點該行開啟。</div>
+  </div>
+
+  <div class="shot">
+    <img src="assets/06-review.png" alt="覆核畫面">
+    <div class="shot-cap"><span>覆核畫面：左邊是標記圖，右邊是學生資料及逐題答案。</span><span>圖中為示範資料</span></div>
+  </div>
+
+  <div class="anno-grid">
+    <div class="anno"><b>1</b><div>標記圖的顏色代表結果：綠＝答對、紅＝答錯、橙＝存疑、灰＝未填、紫＝多選；金色框是答案卷。</div></div>
+    <div class="anno"><b>2</b><div>按「原圖」隱藏所有標記，只看原始掃描；按「增強中」加深淡色筆跡，只影響畫面，不影響分數。</div></div>
+    <div class="anno"><b>3</b><div>用「＋／－」縮放。桌面可用滑鼠拖曳畫面，手機直接滑動。</div></div>
+    <div class="anno"><b>4</b><div>「需覆核 2」只列出有問題的題目；按「顯示全部 24 題」可看全部答案。</div></div>
+    <div class="anno"><b>5</b><div>每題右邊的下拉選單可以直接改正答案；「答案」一欄是答案卷的標準。</div></div>
+    <div class="anno"><b>6</b><div>確認後按「完成覆核」，狀態會變成「覆核完成」，該學生不再計入「需覆核」。</div></div>
+  </div>
+
+  <div class="legend-line">
+    <i style="background:#b9d8cb;"></i>答對
+    <i style="background:#f2c3bc;"></i>答錯
+    <i style="background:#f3ddb8;"></i>存疑
+    <i style="background:#dfe2df;"></i>未填
+    <i style="background:#d8cfe8;"></i>多選
+    <i style="background:#f3e4b8;"></i>答案卷
+  </div>
+
+  <div class="note-box">
+    姓名、班別、學號都可以在右側直接修改。改正班別或學號後，系統會自動從全校名單重新配對姓名；未能配對的插班生會保持空白。黃色欄位是系統補上的值（漏填學號），記得確認。
+  </div>
+
+  <div class="page-foot"><span><b>QTSMC</b> 答題紙批改工具 · 使用手冊</span><span>4</span></div>
+</section>
+
+<!-- ============ 5 EXPORT ============ -->
+<section class="page page-tight">
+  <div class="page-head">
+    <div>
+      <div class="kicker">EXPORT</div>
+      <h2>匯出與解壓</h2>
+    </div>
+    <div class="head-note">按右上角「匯出成績」，<br>會直接跳到匯出頁。</div>
+  </div>
+
+  <div class="shot compact">
+    <img src="assets/09-export.png" alt="匯出頁面">
+    <div class="shot-cap"><span>匯出頁：左邊是報告設定，右邊是兩個下載按鈕。</span><span>圖中為示範資料</span></div>
+  </div>
+
+  <div class="two-col" style="margin-top:5mm;">
+    <div>
+      <div class="panel-title">設定（通常不用改）</div>
+      <ul class="clean">
+        <li><strong>年級、科目</strong>決定檔名，例如 <em>S4_物理_報告 All in one</em>。</li>
+        <li><strong>及格分數</strong>自動設定：高中 S4–S6 為 40%，初中 S1–S3 為 50%。</li>
+        <li><strong>本次題數</strong>由答案卷自動判斷，也可手動修改。</li>
+        <li><strong>答案卷</strong>預設不計入統計；只有需要時才開啟。</li>
+        <li><strong>按班別分拆</strong>預設開啟；選修科可取消。</li>
+      </ul>
+    </div>
+    <div>
+      <div class="panel-title">兩個下載</div>
+      <ul class="clean">
+        <li><strong>Excel 成績報告（.xlsx）</strong>：6 個基本工作表，按班分拆時另加班別統計及每班工作表。</li>
+        <li><strong>所有報告及 PDF（.zip）</strong>：一個檔案包含 XLSX、原始 PDF 及 <em>csv/</em> 資料夾。</li>
+      </ul>
+      <p class="small muted" style="margin:2mm 0 0;">另可下載 JSON 備份，用作轉機或還原；備份不含掃描影像。</p>
+    </div>
+  </div>
+
+  <div style="margin-top:5mm;">
+    <div class="panel-title">解壓後的內容</div>
+    <div class="tree"><b>S4_物理_報告 All in one.zip</b>
+├─ <b>S4_物理_報告 All in one.xlsx</b>   <span class="cap">← 成績報告</span>
+├─ S4_Phy_Quiz3.pdf              <span class="cap">← 你上載的原始 PDF</span>
+└─ csv/
+   ├─ 成績總表.csv
+   ├─ 題目分析.csv
+   ├─ 選項統計.csv
+   ├─ 答案卷.csv
+   ├─ 統計摘要.csv
+   ├─ 班別統計.csv                <span class="cap">← 按班分拆時</span>
+   └─ 成績總表_4A.csv …           <span class="cap">← 每班一份</span></div>
+    <div class="sheet-line">
+      <span>成績總表</span><span>題目分析</span><span>選項統計</span><span>答案卷</span><span>統計摘要</span><span>設定</span><span>班別統計</span><span>每班工作表</span>
+    </div>
+    <p class="small muted" style="margin:2.5mm 0 0;">XLSX 內的 6 個基本工作表，以及按班分拆時新增的「班別統計」及每班工作表。CSV 以 UTF-8 編碼，Excel 可直接開啟。</p>
+  </div>
+
+  <div class="page-foot"><span><b>QTSMC</b> 答題紙批改工具 · 使用手冊</span><span>5</span></div>
+</section>
+
+<!-- ============ 6 OTHER + CHECKLIST ============ -->
+<section class="page">
+  <div class="page-head">
+    <div>
+      <div class="kicker">REFERENCE</div>
+      <h2>其他功能與常見情況</h2>
+    </div>
+    <div class="head-note">以下屬進階或備用功能，<br>不影響基本流程。</div>
+  </div>
+
+  <div class="last-grid">
+    <div class="last-card">
+      <h3><span>OTHER</span>其他功能</h3>
+      <ul class="clean">
+        <li><strong>新任務</strong>：每份卷獨立保存，可隨時切換，不會覆蓋上一份。</li>
+        <li><strong>答案卷編輯器</strong>：修改標準答案；「全部已設定」表示可匯出。</li>
+        <li><strong>重新批改全部</strong>：改動答案卷或大量資料後重新計算。</li>
+        <li><strong>JSON 備份</strong>：轉換電腦或還原任務用，不含掃描影像。</li>
+        <li><strong>手機／iPad</strong>：介面會自動切換為卡片式；建議每批 50–80 頁。</li>
+      </ul>
+    </div>
+    <div class="last-card">
+      <h3><span>COMMON CASES</span>常見情況</h3>
+      <ul class="clean">
+        <li><strong>筆跡太淡</strong>：先用「增強對比」核對；仍讀不到便手動改答案。</li>
+        <li><strong>掃描傾斜</strong>：系統會自動校正 1–2° 的影印或掃描傾斜。</li>
+        <li><strong>學生寫在交叉格</strong>：手寫的班別／學號不會辨識，請直接手動改正。</li>
+        <li><strong>插班生</strong>：名單沒有記錄，姓名空白是正常的。</li>
+        <li><strong>舊年度資料</strong>：姓名可能對不上，只需核對分數。</li>
+        <li><strong>更新後下載失敗</strong>：重新整理一次即可，任務會保留。</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="last-card" style="margin-top:5mm;">
+    <h3><span>BEFORE EXPORT</span>匯出前檢查</h3>
+    <ul class="check-list">
+      <li>所有「需覆核」的學生都已按「完成覆核」。</li>
+      <li>「班別／學號」及「姓名不詳」已處理，或確認可以留空。</li>
+      <li>答案卷的每一題都有答案（沒有「答案未設定」）。</li>
+      <li>已選擇正確的年級及科目，檔名符合需要。</li>
+      <li>按班分拆的開關符合科目性質（選修科可取消）。</li>
+    </ul>
+  </div>
+
+  <div class="note-box" style="margin-top:5mm;">
+    <strong>使用提示：</strong>所有修正即時生效，可隨時匯出；建議先完成所有「需覆核」，再下載最終報告。若某題無法判斷，可保留「存疑」，交由科任老師覆核，避免強行選一個答案。
+  </div>
+
+  <div class="privacy">
+    <b>私隱與資料處理</b><br>
+    本工具為網頁程式，供批改校內選擇題答題紙。毋須安裝、毋須登入；開啟網頁、載入答題紙檔案後即可使用。所有掃描頁分析及計分均於瀏覽器內完成，試卷影像及成績僅存於使用者裝置，不會上傳至任何伺服器或第三方 AI 服務。全校名單於使用時從校內 Google Sheet 即時讀取，不會複製到其他地方。成績儲存在本機瀏覽器（IndexedDB）；清除瀏覽資料會刪除任務，匯出的檔案就是紀錄。
+  </div>
+
+  <div class="page-foot"><span><b>QTSMC</b> 答題紙批改工具 · 使用手冊</span><span>6</span></div>
+</section>
+
+</body>
+</html>

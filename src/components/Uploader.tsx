@@ -69,6 +69,8 @@ export default function Uploader({
           <h2 id="upload-title">把整疊答題紙放進來</h2>
           <p className="panel-sub">
             JPG、PNG、PDF；PDF 會自動拆頁。
+            <br />
+            掃描請用灰階／彩色；黑白模式會使淡色鉛筆痕消失。
           </p>
         </div>
         <div className="panel-head-meta">
