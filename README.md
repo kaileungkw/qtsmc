@@ -69,7 +69,18 @@ npm run preview
 vercel --prod
 ```
 
-或把 GitHub repo 連接到 Vercel，之後每次 push 到 `main` 都會自動部署。
+- GitHub repo：<https://github.com/kaileungkw/qtsmc>
+- Vercel production：<https://qtsmc.vercel.app>
+
+GitHub Actions 會自動執行 `npm ci && npm run build` 作建置檢查（見 `.github/workflows/ci.yml`）。
+
+如要每次 push 到 `main` 都自動部署，Vercel 的 GitHub App 需要授權此 repo（Vercel 帳戶目前只開放了部分 repo）。到 <https://github.com/settings/installations/96342233> 把 `qtsmc` 加入 Repository access，然後執行：
+
+```bash
+vercel git connect https://github.com/kaileungkw/qtsmc.git
+```
+
+目前 production 版本已由 Vercel CLI 部署；自動部署授權後即可改為 Git push 觸發。
 
 ## 技術原理
 
