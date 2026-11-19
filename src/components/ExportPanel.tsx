@@ -216,6 +216,20 @@ export default function ExportPanel({
               </small>
             </label>
             <label className="field field-toggle">
+              <span>按班別分拆匯出</span>
+              <span className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={settings.splitByClass}
+                  onChange={(event) =>
+                    onSettingsChange({ splitByClass: event.target.checked })
+                  }
+                />
+                <span className="toggle-track"><i /></span>
+                <small>選修科可取消</small>
+              </span>
+            </label>
+            <label className="field field-toggle">
               <span>答案卷計入統計</span>
               <span className="toggle-row">
                 <input
@@ -288,7 +302,7 @@ export default function ExportPanel({
             </span>
             <span className="export-btn-copy">
               <strong>Excel 成績報告 (.xlsx)</strong>
-              <small>6 個工作表</small>
+              <small>6 個工作表（可按班分拆）</small>
             </span>
             <Download size={18} />
           </button>
@@ -307,7 +321,7 @@ export default function ExportPanel({
             </span>
             <span className="export-btn-copy">
               <strong>CSV 壓縮檔 (.zip)</strong>
-              <small>5 個 UTF-8 CSV</small>
+              <small>5 個 CSV + XLSX</small>
             </span>
             <Download size={18} />
           </button>

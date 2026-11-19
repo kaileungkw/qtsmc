@@ -92,6 +92,8 @@ export interface Settings {
   title: string;
   subject: string;
   className: string;
+  /** Add per-class breakdown/sheets when the task spans multiple classes. */
+  splitByClass: boolean;
   date: string;
   passMark: number;
   /** Auto: S4–S6 = 40%, S1–S3 = 50%. */

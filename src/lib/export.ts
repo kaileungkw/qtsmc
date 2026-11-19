@@ -6,6 +6,7 @@ import type {
   SheetRecord,
 } from '../types';
 import { displayAnswer } from './scoring';
+import { buildClassStats, type ClassStat } from './exportClass';
 
 export interface ExportContext {
   analysis: Analysis;
@@ -109,7 +110,10 @@ function excelDateLabel(value: string): string {
   return value || new Date().toISOString().slice(0, 10);
 }
 
-export async function exportXlsx(ctx: ExportContext): Promise<void> {
+export async function exportXlsx(
+  ctx: ExportContext,
+  options?: { returnBlob?: boolean },
+): Promise<Blob | undefined> {
   const ExcelJSmod = await import('exceljs');
   const ExcelJS = (ExcelJSmod as unknown as { default?: any }).default ?? ExcelJSmod;
   const wb = new ExcelJS.Workbook();
@@ -117,6 +121,8 @@ export async function exportXlsx(ctx: ExportContext): Promise<void> {
   wb.created = new Date();
   const { analysis, settings, sheets } = ctx;
   const count = settings.questionCount;
+  const classStats = settings.splitByClass ? buildClassStats(analysis, settings) : [];
+  const classCount = classStats.length;
   const qCols = allQuestionColumns(count);
   const headerFill = {
     type: 'pattern',
@@ -282,12 +288,18 @@ export async function exportXlsx(ctx: ExportContext): Promise<void> {
     views: [{ state: 'frozen', ySplit: 4 }],
     pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
   });
-  styleTitle(qSheet, '題目分析 — 每題答對率與選項分佈', metaSubtitle(), 18);
+  styleTitle(
+    qSheet,
+    '題目分析 — 全級及各班答對率與選項分佈',
+    metaSubtitle(),
+    18 + classCount,
+  );
   const qHeaders = [
     '題號',
     '正確答案',
-    '答對人數',
-    '答對 %',
+    '全級答對人數',
+    '全級答對%',
+    ...classStats.map((cls) => `${cls.name} 答對%`),
     '有效作答',
     'A 人數',
     'A %',
@@ -305,10 +317,33 @@ export async function exportXlsx(ctx: ExportContext): Promise<void> {
   ];
   qSheet.getRow(4).values = qHeaders;
   styleHeader(qSheet, 4);
-  [7, 9, 8, 9, 9, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 22].forEach((width, i) => {
+  const qWidths = [
+    7,
+    9,
+    8,
+    10,
+    ...classStats.map(() => 10),
+    9,
+    7,
+    7,
+    7,
+    7,
+    7,
+    7,
+    7,
+    7,
+    8,
+    8,
+    8,
+    8,
+    22,
+  ];
+  qWidths.forEach((width, i) => {
     qSheet.getColumn(i + 1).width = width;
   });
   const totalStudents = analysis.included.length;
+  const answeredCol = 5 + classCount;
+  const optionStart = answeredCol + 1;
   analysis.questions.forEach((stat, idx) => {
     const row = qSheet.getRow(5 + idx);
     const o = stat.options;
@@ -317,7 +352,8 @@ export async function exportXlsx(ctx: ExportContext): Promise<void> {
       stat.keyValid ? stat.key : '未設定',
       stat.correctCount,
       stat.correctPercent,
-      stat.answeredCount,
+      ...classStats.map((cls) => cls.questions[idx].correctPercent),
+      `${stat.answeredCount} / ${totalStudents}`,
       o.A.count,
       o.A.percent,
       o.B.count,
@@ -345,8 +381,18 @@ export async function exportXlsx(ctx: ExportContext): Promise<void> {
       pattern: 'solid',
       fgColor: { argb: percentileColor(stat.correctPercent) },
     };
-    for (const col of [7, 9, 11, 13, 15, 17]) {
-      row.getCell(col).numFmt = '0.0"%"';
+    for (let c = 0; c < classCount; c++) {
+      const cell = row.getCell(5 + c);
+      cell.numFmt = '0.0"%"';
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: percentileColor(classStats[c].questions[idx].correctPercent) },
+      };
+    }
+    row.getCell(answeredCol).alignment = { vertical: 'middle', horizontal: 'center' };
+    for (const offset of [1, 3, 5, 7, 9, 11]) {
+      row.getCell(optionStart + offset).numFmt = '0.0"%"';
     }
     if (!stat.keyValid) {
       row.getCell(2).fill = {
@@ -355,12 +401,10 @@ export async function exportXlsx(ctx: ExportContext): Promise<void> {
         fgColor: { argb: COLORS.redSoft },
       };
     }
-    row.getCell(5).value = `${stat.answeredCount} / ${totalStudents}`;
-    row.getCell(5).alignment = { vertical: 'middle', horizontal: 'center' };
   });
   qSheet.autoFilter = {
     from: { row: 4, column: 1 },
-    to: { row: 4 + analysis.questions.length, column: 18 },
+    to: { row: 4 + analysis.questions.length, column: 18 + classCount },
   };
 
   // -------------------------------------------------------------------------
@@ -499,6 +543,239 @@ export async function exportXlsx(ctx: ExportContext): Promise<void> {
   });
 
   // -------------------------------------------------------------------------
+  // 班別統計及每班工作表
+  // -------------------------------------------------------------------------
+  if (classStats.length > 0) {
+    const clsSheet = wb.addWorksheet('班別統計', {
+      views: [{ state: 'frozen', ySplit: 4 }],
+      pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+    });
+    styleTitle(clsSheet, '班別統計 — 全級及各班', metaSubtitle(), 8);
+    clsSheet.getRow(4).values = [
+      '班別',
+      '人數',
+      '平均分（%）',
+      '中位數（%）',
+      '最高（%）',
+      '最低（%）',
+      '標準差',
+      '及格率（%）',
+    ];
+    styleHeader(clsSheet, 4);
+    [10, 8, 12, 12, 10, 10, 10, 12].forEach((width, i) => {
+      clsSheet.getColumn(i + 1).width = width;
+    });
+    const summaryRows = [
+      ...classStats.map((cls) => [
+        cls.name,
+        cls.count,
+        cls.summary.average,
+        cls.summary.median,
+        cls.summary.highest,
+        cls.summary.lowest,
+        cls.summary.stdDev,
+        cls.summary.passRate,
+      ]),
+      [
+        '全級',
+        analysis.included.length,
+        analysis.summary.average,
+        analysis.summary.median,
+        analysis.summary.highest,
+        analysis.summary.lowest,
+        analysis.summary.stdDev,
+        analysis.summary.passRate,
+      ],
+    ];
+    summaryRows.forEach((values, idx) => {
+      const row = clsSheet.getRow(5 + idx);
+      row.values = values;
+      row.eachCell({ includeEmpty: true }, (cell: any) => {
+        cell.font = {
+          name: FONT,
+          size: 10,
+          bold: values[0] === '全級',
+          color: { argb: COLORS.text },
+        };
+        cell.border = thinBorder;
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        if (values[0] === '全級') {
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: COLORS.cream },
+          };
+        }
+      });
+      for (const col of [3, 4, 5, 6]) row.getCell(col).numFmt = '0.0"%"';
+      row.getCell(8).numFmt = '0.0"%"';
+    });
+    clsSheet.autoFilter = {
+      from: { row: 4, column: 1 },
+      to: { row: 4 + summaryRows.length, column: 8 },
+    };
+
+    for (const cls of classStats) {
+      const sheetName =
+        cls.name.replace(/[\/?*\[\]:]/g, ' ').trim().slice(0, 31) ||
+        `班別${classStats.indexOf(cls) + 1}`;
+      const ws = wb.addWorksheet(sheetName, {
+        views: [{ state: 'frozen', xSplit: 4, ySplit: 4 }],
+        pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+      });
+      styleTitle(
+        ws,
+        `${cls.name} 班 — 成績及分析`,
+        `${metaSubtitle()}　·　全班 ${cls.count} 人`,
+        13 + count,
+      );
+      ws.getRow(4).values = [
+        '人數',
+        '平均分（%）',
+        '中位數（%）',
+        '最高（%）',
+        '最低（%）',
+        '標準差',
+        '及格率（%）',
+      ];
+      styleHeader(ws, 4);
+      ws.getRow(5).values = [
+        cls.count,
+        cls.summary.average,
+        cls.summary.median,
+        cls.summary.highest,
+        cls.summary.lowest,
+        cls.summary.stdDev,
+        cls.summary.passRate,
+      ];
+      ws.getRow(5).eachCell({ includeEmpty: true }, (cell: any) => {
+        cell.font = { name: FONT, size: 10, color: { argb: COLORS.text } };
+        cell.border = thinBorder;
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      });
+      for (const col of [2, 3, 4, 5]) ws.getCell(5, col).numFmt = '0.0"%"';
+      ws.getCell(5, 7).numFmt = '0.0"%"';
+
+      const questionHead = 7;
+      ws.getRow(questionHead).values = [
+        '題號',
+        '正確答案',
+        '班內答對人數',
+        '班內答對%',
+        '全級答對%',
+      ];
+      styleHeader(ws, questionHead);
+      analysis.questions.forEach((question, idx) => {
+        const row = ws.getRow(questionHead + 1 + idx);
+        const clsQuestion = cls.questions[idx];
+        row.values = [
+          `Q${question.q}`,
+          question.keyValid ? question.key : '未設定',
+          clsQuestion.correctCount,
+          clsQuestion.correctPercent,
+          question.correctPercent,
+        ];
+        row.eachCell({ includeEmpty: true }, (cell: any) => {
+          cell.font = { name: FONT, size: 10, color: { argb: COLORS.text } };
+          cell.border = thinBorder;
+          cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        });
+        row.getCell(4).numFmt = '0.0"%"';
+        row.getCell(5).numFmt = '0.0"%"';
+        row.getCell(4).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: percentileColor(clsQuestion.correctPercent) },
+        };
+      });
+
+      const scoreHead = questionHead + 1 + analysis.questions.length + 2;
+      const classScoreHeaders = [
+        '序號',
+        '班別',
+        '學號',
+        '姓名',
+        '得分',
+        '滿分',
+        '百分比',
+        '答對',
+        '答錯',
+        '未填',
+        '多選',
+        '低信心',
+        '備註',
+        ...qCols,
+      ];
+      ws.getRow(scoreHead).values = classScoreHeaders;
+      styleHeader(ws, scoreHead);
+      [6, 9, 9, 18, 8, 8, 10, 8, 8, 8, 8, 8, 18].forEach((width, i) => {
+        ws.getColumn(i + 1).width = width;
+      });
+      for (let i = 0; i < count; i++) ws.getColumn(14 + i).width = 7;
+      cls.students.forEach((student, idx) => {
+        const row = ws.getRow(scoreHead + 1 + idx);
+        const correctCount = student.isKey ? student.total : student.score;
+        row.values = [
+          idx + 1,
+          student.className || '',
+          student.seatNo || '',
+          studentName(student.name, idx),
+          correctCount,
+          student.total,
+          student.percent,
+          correctCount,
+          Math.max(0, student.total - correctCount),
+          student.blankCount,
+          student.multiCount,
+          student.lowCount,
+          exportNote(student),
+          ...qCols.map((_, qIndex) =>
+            answerText(
+              student.answers[qIndex + 1] ?? 'blank',
+              student.multiChoices?.[qIndex + 1],
+            ),
+          ),
+        ];
+        row.height = 22;
+        row.eachCell({ includeEmpty: true }, (cell: any) => {
+          cell.font = { name: FONT, size: 10, color: { argb: COLORS.text } };
+          cell.border = thinBorder;
+          cell.alignment = { vertical: 'middle', horizontal: 'center' };
+          if (cell.col <= 13) {
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: COLORS.white },
+            };
+          }
+        });
+        row.getCell(7).numFmt = '0.0"%"';
+        for (let q = 1; q <= count; q++) {
+          const cell = row.getCell(13 + q);
+          const value = student.answers[q] ?? 'blank';
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: {
+              argb: answerFill(value, Boolean(student.correct[q]), student.isKey),
+            },
+          };
+          if (value === 'multi') {
+            cell.font = {
+              name: FONT,
+              size: 10,
+              bold: true,
+              color: { argb: 'FF5B3E86' },
+            };
+          } else if (value === 'blank') {
+            cell.font = { name: FONT, size: 9, color: { argb: 'FF7A7A7A' } };
+          }
+        }
+      });
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // 設定
   // -------------------------------------------------------------------------
   const settingsSheet = wb.addWorksheet('設定');
@@ -516,6 +793,7 @@ export async function exportXlsx(ctx: ExportContext): Promise<void> {
     ['及格分數（%）', settings.passMark],
     ['及格分數規則', settings.passMarkAuto ? '自動（高中40%／初中50%）' : '手動'],
     ['答案卷是否計入統計', settings.includeKey ? '是' : '否'],
+    ['按班別分拆匯出', settings.splitByClass ? '是' : '否'],
     ['學生數（計入統計）', analysis.included.length],
     ['產生時間', new Date().toLocaleString('zh-HK')],
     ['系統', 'QTSMC 答題紙批改'],
@@ -537,8 +815,10 @@ export async function exportXlsx(ctx: ExportContext): Promise<void> {
   const blob = new Blob([buffer], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   });
+  if (options?.returnBlob) return blob;
   const base = `QTSMC_${safeName(settings.title || '成績')}_${excelDateLabel(settings.date)}`;
   download(blob, `${base}.xlsx`);
+  return undefined;
 }
 
 function csvEscape(value: string | number): string {
@@ -554,6 +834,7 @@ export async function exportCsvZip(ctx: ExportContext): Promise<void> {
   const JSZip = (await import('jszip')).default;
   const { analysis, settings } = ctx;
   const count = settings.questionCount;
+  const classStats = settings.splitByClass ? buildClassStats(analysis, settings) : [];
   const qCols = allQuestionColumns(count);
   const date = excelDateLabel(settings.date);
   const lines: string[] = [];
@@ -612,14 +893,36 @@ export async function exportCsvZip(ctx: ExportContext): Promise<void> {
 
   const qLines: string[] = [];
   qLines.push(csvLine(['QTSMC 題目分析', settings.title || '']));
-  qLines.push(csvLine(['題號', '正確答案', '答對人數', '答對 %', '有效作答', 'A 人數', 'A %', 'B 人數', 'B %', 'C 人數', 'C %', 'D 人數', 'D %', 'blank 人數', 'blank %', 'multi 人數', 'multi %']));
-  for (const stat of analysis.questions) {
+  qLines.push(
+    csvLine([
+      '題號',
+      '正確答案',
+      '全級答對人數',
+      '全級答對%',
+      ...classStats.map((cls) => `${cls.name} 答對%`),
+      '有效作答',
+      'A 人數',
+      'A %',
+      'B 人數',
+      'B %',
+      'C 人數',
+      'C %',
+      'D 人數',
+      'D %',
+      'blank 人數',
+      'blank %',
+      'multi 人數',
+      'multi %',
+    ]),
+  );
+  for (const [idx, stat] of analysis.questions.entries()) {
     qLines.push(
       csvLine([
         `Q${stat.q}`,
         stat.keyValid ? stat.key : '未設定',
         stat.correctCount,
         stat.correctPercent,
+        ...classStats.map((cls) => cls.questions[idx].correctPercent),
         `${stat.answeredCount}/${analysis.included.length}`,
         stat.options.A.count,
         stat.options.A.percent,
@@ -698,12 +1001,133 @@ export async function exportCsvZip(ctx: ExportContext): Promise<void> {
     summaryLines.push(csvLine([bucket.label, bucket.count]));
   }
 
+  const classSummaryLines: string[] = [];
+  classSummaryLines.push(csvLine(['QTSMC 班別統計', settings.title || '']));
+  classSummaryLines.push(
+    csvLine([
+      '班別',
+      '人數',
+      '平均分（%）',
+      '中位數（%）',
+      '最高（%）',
+      '最低（%）',
+      '標準差',
+      `及格率（≥${settings.passMark}%）`,
+    ]),
+  );
+  for (const cls of classStats) {
+    classSummaryLines.push(
+      csvLine([
+        cls.name,
+        cls.count,
+        cls.summary.average,
+        cls.summary.median,
+        cls.summary.highest,
+        cls.summary.lowest,
+        cls.summary.stdDev,
+        cls.summary.passRate,
+      ]),
+    );
+  }
+  if (classStats.length > 0) {
+    classSummaryLines.push(
+      csvLine([
+        '全級',
+        analysis.included.length,
+        summary.average,
+        summary.median,
+        summary.highest,
+        summary.lowest,
+        summary.stdDev,
+        summary.passRate,
+      ]),
+    );
+  }
+
+  const classScoreCsv = (cls: ClassStat): string => {
+    const classLines: string[] = [];
+    classLines.push(csvLine([`QTSMC 成績總表 — ${cls.name} 班`, settings.title || '']));
+    classLines.push(
+      csvLine([
+        `科目：${settings.subject || ''}`,
+        `班別：${cls.name}`,
+        `日期：${date}`,
+        `人數：${cls.count}`,
+        `題數：${count}`,
+        `平均分：${cls.summary.average}%`,
+        `及格率：${cls.summary.passRate}%`,
+      ]),
+    );
+    classLines.push('');
+    classLines.push(
+      csvLine([
+        '序號',
+        '班別',
+        '學號',
+        '姓名',
+        '得分',
+        '滿分',
+        '百分比',
+        '答對',
+        '答錯',
+        'blank',
+        'multi',
+        '低信心',
+        '備註',
+        ...qCols,
+      ]),
+    );
+    cls.students.forEach((student, idx) => {
+      classLines.push(
+        csvLine([
+          idx + 1,
+          student.className,
+          student.seatNo,
+          studentName(student.name, idx),
+          student.score,
+          student.total,
+          student.percent,
+          student.score,
+          Math.max(0, student.total - student.score),
+          student.blankCount,
+          student.multiCount,
+          student.lowCount,
+          exportNote(student),
+          ...qCols.map((_, qIndex) =>
+            answerText(
+              student.answers[qIndex + 1] ?? 'blank',
+              student.multiChoices?.[qIndex + 1],
+            ),
+          ),
+        ]),
+      );
+    });
+    return classLines.join('\r\n');
+  };
+
   const zip = new JSZip();
   zip.file('成績總表.csv', `\uFEFF${lines.join('\r\n')}`);
   zip.file('題目分析.csv', `\uFEFF${qLines.join('\r\n')}`);
   zip.file('選項統計.csv', `\uFEFF${optLines.join('\r\n')}`);
   zip.file('答案卷.csv', `\uFEFF${keyLines.join('\r\n')}`);
   zip.file('統計摘要.csv', `\uFEFF${summaryLines.join('\r\n')}`);
+  if (classStats.length > 0) {
+    zip.file('班別統計.csv', `\uFEFF${classSummaryLines.join('\r\n')}`);
+    for (const cls of classStats) {
+      zip.file(
+        `成績總表_${safeName(cls.name)}.csv`,
+        `\uFEFF${classScoreCsv(cls)}`,
+      );
+    }
+  }
+  // The CSV download is already a zip; include the Excel workbook as well.
+  const xlsxBlob = await exportXlsx(ctx, { returnBlob: true });
+  if (xlsxBlob) {
+    zip.file(
+      `QTSMC_${safeName(settings.title || '成績')}_${date}.xlsx`,
+      xlsxBlob,
+    );
+  }
 
   const blob = await zip.generateAsync({ type: 'blob' });
   const base = `QTSMC_${safeName(settings.title || '成績')}_${date}_csv`;

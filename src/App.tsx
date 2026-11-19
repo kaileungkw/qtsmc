@@ -38,6 +38,7 @@ const DEFAULT_SETTINGS: Settings = {
   title: '',
   subject: '',
   className: '',
+  splitByClass: true,
   date: today,
   passMark: 50,
   passMarkAuto: true,
