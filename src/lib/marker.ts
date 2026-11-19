@@ -740,7 +740,7 @@ export function readHeaderFields(
   }
   if (printed < 18) return undefined;
 
-  const measure = (cx: number, cy: number): number => {
+  const measure = (cx: number, cy: number): { score: number; core: number } => {
     const measured = measureBubble(
       gray,
       width,
@@ -755,8 +755,8 @@ export function readHeaderFields(
     // Header bubbles are often only lightly stippled, while their printed
     // outline contributes to the normal patch score. A strict inner core
     // separates a few pencil dots (real fill) from the outline (blank).
-    const rx = Math.max(2, Math.round(bw * 0.16));
-    const ry = Math.max(1, Math.round(bh * 0.12));
+    const rx = Math.max(1, Math.round(bw * 0.08));
+    const ry = Math.max(1, Math.round(bh * 0.06));
     let coreDark = 0;
     let coreCount = 0;
     for (let y = measured.cy - ry; y <= measured.cy + ry; y++) {
@@ -766,32 +766,47 @@ export function readHeaderFields(
         coreCount++;
       }
     }
-    return measured.ink + 0.75 * (coreCount ? coreDark / coreCount : 0);
+    const core = coreCount ? coreDark / coreCount : 0;
+    return { score: measured.ink + 0.75 * core, core };
   };
 
   const pickScores = (
     scores: number[],
+    cores: number[],
     minInk = 0.24,
     minMargin = 0.05,
+    minCore = 0.04,
   ): { index: number; score: number; margin: number } | undefined => {
+    // An empty printed bubble can still score from its outline. Require a
+    // little darkness in the centre before accepting a header digit/letter.
     const order = scores
-      .map((score, index) => ({ score, index }))
+      .map((score, index) => ({ score, index, core: cores[index] ?? 0 }))
+      .filter((item) => item.core >= minCore)
       .sort((a, b) => b.score - a.score);
     const top = order[0];
+    if (!top) return undefined;
     const second = order[1] ?? { score: 0, index: -1 };
     if (top.score < minInk) return undefined;
     if (top.score - second.score < minMargin) return undefined;
     return { index: top.index, score: top.score, margin: top.score - second.score };
   };
 
-  const levelScores = levelPoints.map((p) => measure(p.cx, p.cy));
-  const classScores = classPoints.map((p) => measure(p.cx, p.cy));
-  const tensScores = tensPoints.map((p) => measure(p.cx, p.cy));
-  const unitsScores = unitsPoints.map((p) => measure(p.cx, p.cy));
-  const levelPick = pickScores(levelScores, 0.18);
-  const classPick = pickScores(classScores, 0.18);
-  const tensPick = pickScores(tensScores, 0.13, 0.005);
-  const unitsPick = pickScores(unitsScores, 0.15, 0.04);
+  const levelMeasured = levelPoints.map((p) => measure(p.cx, p.cy));
+  const classMeasured = classPoints.map((p) => measure(p.cx, p.cy));
+  const tensMeasured = tensPoints.map((p) => measure(p.cx, p.cy));
+  const unitsMeasured = unitsPoints.map((p) => measure(p.cx, p.cy));
+  const levelScores = levelMeasured.map((m) => m.score);
+  const classScores = classMeasured.map((m) => m.score);
+  const tensScores = tensMeasured.map((m) => m.score);
+  const unitsScores = unitsMeasured.map((m) => m.score);
+  const levelCores = levelMeasured.map((m) => m.core);
+  const classCores = classMeasured.map((m) => m.core);
+  const tensCores = tensMeasured.map((m) => m.core);
+  const unitsCores = unitsMeasured.map((m) => m.core);
+  const levelPick = pickScores(levelScores, levelCores, 0.18);
+  const classPick = pickScores(classScores, classCores, 0.18);
+  const tensPick = pickScores(tensScores, tensCores, 0.13, 0.005);
+  const unitsPick = pickScores(unitsScores, unitsCores, 0.15, 0.04);
 
   if (!levelPick && !classPick && !tensPick && !unitsPick) return undefined;
   const level = levelPick ? levelPick.index + 1 : undefined;

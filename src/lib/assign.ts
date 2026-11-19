@@ -120,6 +120,29 @@ export function applyRosterAndSuggestions<T extends SheetRecord>(
 
     let cls = !sheet.suggested?.className ? sheet.className : '';
     if (!cls) {
+      // A missing header at a class boundary (e.g. 5A38 → blank → 5B01)
+      // is most likely the next seat of the previous class. Suggest it, but
+      // keep the amber "漏填學號" flag and do not invent a name.
+      if (prev && after && prev.className !== after.className) {
+        const previousSeat = Number(prev.seatNo);
+        if (Number.isFinite(previousSeat) && previousSeat > 0 && after.seatNo === '01') {
+          const suggestedSeat = String(previousSeat + 1).padStart(2, '0');
+          sheet.className = prev.className;
+          sheet.seatNo = suggestedSeat;
+          sheet.suggested = withSuggested(sheet, {
+            className: true,
+            seatNo: true,
+          });
+          const entry = lookupRoster(roster, prev.className, suggestedSeat);
+          if (entry && canReplaceName(sheet)) {
+            sheet.name = entry.name;
+            sheet.nameSource = 'suggested';
+            sheet.candidateNo = padExamId(entry);
+            sheet.suggested = withSuggested(sheet, { name: true });
+          }
+          continue;
+        }
+      }
       if (prev && after && prev.className !== after.className) continue;
       cls = prev?.className || after?.className || '';
     }
@@ -157,15 +180,44 @@ export function applyRosterAndSuggestions<T extends SheetRecord>(
     if (!start || start <= 0) continue;
 
     const entry = findFreeRosterEntry(roster, cls, start, direction, used);
-    if (!entry) continue;
-    if (upperBound !== undefined && entry.examId > upperBound) continue;
-
+    const entryInRange = entry && (upperBound === undefined || entry.examId <= upperBound);
+    if (!entryInRange) {
+      // The student may be a transfer student who is not in the live roster.
+      // Fall back to the seat between the neighbouring pages, but keep it as
+      // an amber suggestion and leave the name blank.
+      const prevSeat = prev && prev.className === cls ? Number(prev.seatNo) : NaN;
+      const afterSeat = after && after.className === cls ? Number(after.seatNo) : NaN;
+      let fallbackSeat: number | undefined;
+      if (Number.isFinite(prevSeat) && (!Number.isFinite(afterSeat) || afterSeat > prevSeat + 1)) {
+        fallbackSeat = prevSeat + 1;
+      } else if (!Number.isFinite(prevSeat) && Number.isFinite(afterSeat)) {
+        fallbackSeat = afterSeat - 1;
+      } else if (Number.isFinite(prevSeat) && Number.isFinite(afterSeat) && afterSeat - prevSeat === 2) {
+        fallbackSeat = prevSeat + 1;
+      }
+      if (!fallbackSeat || fallbackSeat <= 0) continue;
+      const fallbackSeatNo = String(fallbackSeat).padStart(2, '0');
+      const conflict = next.some(
+        (s) =>
+          s !== sheet &&
+          s.className === cls &&
+          s.seatNo === fallbackSeatNo,
+      );
+      if (conflict) continue;
+      if (classMissing) {
+        sheet.className = cls;
+        sheet.suggested = withSuggested(sheet, { className: true });
+      }
+      sheet.seatNo = fallbackSeatNo;
+      sheet.suggested = withSuggested(sheet, { seatNo: true });
+      continue;
+    }
     if (classMissing) {
       sheet.className = entry.class;
       sheet.suggested = withSuggested(sheet, { className: true });
     }
-    sheet.seatNo = String(entry.num).padStart(2, '0');
-    sheet.candidateNo = padExamId(entry);
+    sheet.seatNo = String(entry!.num).padStart(2, '0');
+    sheet.candidateNo = padExamId(entry!);
     sheet.suggested = withSuggested(sheet, { seatNo: true });
     used.add(entry.examId);
     if (canReplaceName(sheet)) {
