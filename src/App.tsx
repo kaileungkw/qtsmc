@@ -151,6 +151,7 @@ interface BootResult {
   activeTaskId: string;
   session?: SavedSession;
   migrated: boolean;
+  loadError?: string;
 }
 
 function emptyTask(): { task: TaskMeta; index: { tasks: TaskMeta[]; activeTaskId: string } } {
@@ -172,7 +173,12 @@ async function bootTasks(): Promise<BootResult> {
     try {
       session = await loadTaskSession(active.id);
     } catch {
-      session = undefined;
+      return {
+        tasks: index.tasks,
+        activeTaskId: active.id,
+        migrated: false,
+        loadError: '瀏覽器未能讀取目前任務。請重新載入並重試。',
+      };
     }
     return { tasks: index.tasks, activeTaskId: active.id, session, migrated: false };
   }
@@ -253,6 +259,7 @@ export default function App() {
     total: number;
   }>({ active: false, label: '', page: 0, total: 0 });
   const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [taskLoadError, setTaskLoadError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [showManager, setShowManager] = useState(true);
   const [reviewId, setReviewId] = useState<string | null>(null);
@@ -320,6 +327,8 @@ export default function App() {
         if (cancelled) return;
         setTasks(result.tasks);
         setActiveTaskId(result.activeTaskId);
+        setTaskLoadError(result.loadError ?? null);
+        if (result.loadError) setSaveState('error');
         if (result.session) {
           const restored = runtimeFromSaved(result.session);
           setSettings({ ...DEFAULT_SETTINGS, ...result.session.settings });
@@ -427,7 +436,7 @@ export default function App() {
 
   // Autosave the active task (including an empty task's subject/settings).
   useEffect(() => {
-    if (!hydrated || processing || !activeTaskId) return;
+    if (!hydrated || processing || !activeTaskId || taskLoadError) return;
     const timer = window.setTimeout(() => {
       setSaveState('saving');
       saveTaskSession(activeTaskId, buildSession())
@@ -435,7 +444,7 @@ export default function App() {
         .catch(() => setSaveState('error'));
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [hydrated, processing, activeTaskId, buildSession]);
+  }, [hydrated, processing, activeTaskId, buildSession, taskLoadError]);
 
   // Keep the task switcher labels and counts in sync immediately.
   useEffect(() => {
@@ -881,7 +890,15 @@ export default function App() {
       setTaskBusy(true);
       try {
         if (activeTaskId) {
-          await saveTaskSession(activeTaskId, buildSession()).catch(() => undefined);
+          try {
+            await saveTaskSession(activeTaskId, buildSession());
+          } catch {
+            showToast(
+              '目前任務未能儲存，未切換或建立任務。請重試，並檢查瀏覽器儲存空間。',
+              'error',
+            );
+            return;
+          }
         }
         const target = tasks.find((task) => task.id === id);
         const saved = await loadTaskSession(id);
@@ -911,7 +928,15 @@ export default function App() {
     setTaskBusy(true);
     try {
       if (activeTaskId) {
-        await saveTaskSession(activeTaskId, buildSession()).catch(() => undefined);
+        try {
+          await saveTaskSession(activeTaskId, buildSession());
+        } catch {
+          showToast(
+            '目前任務未能儲存，未切換或建立任務。請重試，並檢查瀏覽器儲存空間。',
+            'error',
+          );
+          return;
+        }
       }
       // Replace an unused task instead of leaving an empty entry behind.
       const current = tasks.find((task) => task.id === activeTaskId);
@@ -1149,7 +1174,9 @@ export default function App() {
         onSwitchTask={(id) => void switchTask(id)}
         onNewTask={requestNewTask}
         onDeleteTask={() => void deleteCurrentTask()}
-        taskDisabled={!hydrated || processing || taskBusy || importProgress.active}
+        taskDisabled={
+          !hydrated || processing || taskBusy || importProgress.active || Boolean(taskLoadError)
+        }
       />
 
       <main>
@@ -1260,6 +1287,25 @@ export default function App() {
       </main>
 
       <Footer onDeleteTask={() => void deleteCurrentTask()} />
+
+      {taskLoadError && (
+        <div
+          className="modal-backdrop"
+          role="alertdialog"
+          aria-modal="true"
+          aria-label="任務載入失敗"
+        >
+          <div className="setup-modal">
+            <div className="review-error-body">
+              <h2>未能載入目前任務</h2>
+              <p>{taskLoadError} 為免覆蓋原有資料，系統已停止自動儲存。</p>
+              <button className="btn primary" onClick={() => window.location.reload()}>
+                重新載入
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {reviewSheet && (
         <ReviewModal

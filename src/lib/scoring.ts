@@ -117,9 +117,10 @@ export function suggestQuestionCountFromClass(
   const detected = sheets.filter((sheet) => sheet.detection?.ok);
   const keyLast = suggestQuestionCountFromKey(keySheet, keyAnswers, keyOverrides);
   if (detected.length <= 1) return keyLast;
-  const threshold = Math.max(2, Math.ceil(detected.length * 0.2));
+  const classSheets = detected.filter((sheet) => sheet.id !== keySheet?.id);
+  const threshold = Math.max(2, Math.ceil(classSheets.length * 0.2));
   const counts = new Array<number>(MAX_QUESTIONS + 1).fill(0);
-  for (const sheet of detected) {
+  for (const sheet of classSheets) {
     const answers = getSheetAnswers(sheet, overrides[sheet.id]);
     const rows = new Map(sheet.detection!.rows.map((row) => [row.q, row]));
     for (let q = 1; q <= MAX_QUESTIONS; q++) {
@@ -140,6 +141,7 @@ export function suggestQuestionCountFromClass(
   // (show-through, speckle). Require at least two other sheets to back it up.
   let backed = 0;
   for (const sheet of detected) {
+    if (sheet.id === keySheet?.id) continue;
     const answers = getSheetAnswers(sheet, overrides[sheet.id]);
     const rows = new Map(sheet.detection!.rows.map((row) => [row.q, row]));
     for (let q = classLast + 1; q <= keyLast; q++) {
