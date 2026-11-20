@@ -5,9 +5,16 @@ import type {
   Settings,
   SheetRecord,
   SourcePdf,
+  StudentResult,
 } from '../types';
 import { displayAnswer } from './scoring';
-import { buildClassStats, buildGroupStats, UNGROUPED, type ClassStat } from './exportClass';
+import {
+  buildClassStats,
+  buildGroupStats,
+  UNGROUPED,
+  type ClassStat,
+  type GroupField,
+} from './exportClass';
 
 export interface ExportContext {
   analysis: Analysis;
@@ -83,6 +90,14 @@ function questionHeader(q: number): string {
   return `Q${q}`;
 }
 
+/** Which roster column supplies this subject's lesson groups. */
+function groupFieldForSubject(subject: string): GroupField | null {
+  const value = subject.trim();
+  if (value === '數學') return 'group';
+  if (value === '英國語文' || value === '英文') return 'groupEng';
+  return null;
+}
+
 function exportNote(student: {
   isKey: boolean;
   needsReview: boolean;
@@ -135,13 +150,15 @@ export async function exportXlsx(
   const count = settings.questionCount;
   const classStats = settings.splitByClass ? buildClassStats(analysis, settings) : [];
   const classCount = classStats.length;
-  // Maths classes are split into lesson groups. The roster Group column is the
-  // source; when it is missing entirely we leave the report unchanged.
-  const isMaths = settings.subject.trim() === '數學';
-  const groupStats = isMaths ? buildGroupStats(analysis, settings) : [];
+  // Maths and English classes are split into lesson groups. The roster
+  // Group/EngGroup column is the source; no group data means no extra column.
+  const groupField = groupFieldForSubject(settings.subject);
+  const groupStats = groupField ? buildGroupStats(analysis, settings, groupField) : [];
   const showGroups = groupStats.some((group) => group.name !== UNGROUPED);
   const hasUngrouped = groupStats.some((group) => group.name === UNGROUPED);
   const groupOffset = showGroups ? 1 : 0;
+  const groupValue = (student: StudentResult): string =>
+    groupField ? (student[groupField] ?? '').trim() || UNGROUPED : '';
   const qCols = allQuestionColumns(count);
   const headerFill = {
     type: 'pattern',
@@ -246,7 +263,7 @@ export async function exportXlsx(
       student.className || '',
       student.seatNo || '',
       studentName(student.name, idx),
-      ...(showGroups ? [student.isKey ? '' : student.group || UNGROUPED] : []),
+      ...(showGroups ? [student.isKey ? '' : groupValue(student)] : []),
       student.isKey ? '答案卷' : '學生',
       student.isKey ? student.total : student.score,
       student.total,
@@ -743,7 +760,7 @@ export async function exportXlsx(
           student.className || '',
           student.seatNo || '',
           studentName(student.name, idx),
-          ...(showGroups ? [student.isKey ? '' : student.group || UNGROUPED] : []),
+          ...(showGroups ? [student.isKey ? '' : groupValue(student)] : []),
           correctCount,
           student.total,
           student.percent,
@@ -955,13 +972,13 @@ export async function exportXlsx(
     ['及格分數規則', settings.passMarkAuto ? '自動（高中40%／初中50%）' : '手動'],
     ['答案卷是否計入統計', settings.includeKey ? '是' : '否'],
     ['按班別分拆匯出', settings.splitByClass ? '是' : '否'],
-    ...(isMaths
+    ...(groupField
       ? ([
           [
             '分組統計',
             showGroups
               ? `是（${groupStats.length - (hasUngrouped ? 1 : 0)} 組${hasUngrouped ? `，另有 ${UNGROUPED}` : ''}）`
-              : '否（全校名單未有 Group 資料）',
+              : `否（全校名單未有 ${groupField === 'group' ? 'Group' : 'EngGroup'} 資料）`,
           ],
         ] as [string, string][])
       : []),
@@ -1005,10 +1022,12 @@ export async function exportCsvZip(ctx: ExportContext): Promise<void> {
   const { analysis, settings } = ctx;
   const count = settings.questionCount;
   const classStats = settings.splitByClass ? buildClassStats(analysis, settings) : [];
-  const isMaths = settings.subject.trim() === '數學';
-  const groupStats = isMaths ? buildGroupStats(analysis, settings) : [];
+  const groupField = groupFieldForSubject(settings.subject);
+  const groupStats = groupField ? buildGroupStats(analysis, settings, groupField) : [];
   const showGroups = groupStats.some((group) => group.name !== UNGROUPED);
   const hasUngrouped = groupStats.some((group) => group.name === UNGROUPED);
+  const groupValue = (student: StudentResult): string =>
+    groupField ? (student[groupField] ?? '').trim() || UNGROUPED : '';
   const qCols = allQuestionColumns(count);
   const date = excelDateLabel(settings.date);
   const lines: string[] = [];
@@ -1051,7 +1070,7 @@ export async function exportCsvZip(ctx: ExportContext): Promise<void> {
         student.className,
         student.seatNo,
         studentName(student.name, idx),
-        ...(showGroups ? [student.isKey ? '' : student.group || UNGROUPED] : []),
+        ...(showGroups ? [student.isKey ? '' : groupValue(student)] : []),
         student.isKey ? '答案卷' : '學生',
         student.isKey ? student.total : student.score,
         student.total,
@@ -1261,7 +1280,7 @@ export async function exportCsvZip(ctx: ExportContext): Promise<void> {
           student.className,
           student.seatNo,
           studentName(student.name, idx),
-          ...(showGroups ? [student.isKey ? '' : student.group || UNGROUPED] : []),
+          ...(showGroups ? [student.isKey ? '' : groupValue(student)] : []),
           student.score,
           student.total,
           student.percent,

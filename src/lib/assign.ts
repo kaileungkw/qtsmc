@@ -242,9 +242,12 @@ export function applyRosterAndSuggestions<T extends SheetRecord>(
   for (const sheet of next) {
     if (sheet.isKey) {
       sheet.group = undefined;
+      sheet.groupEng = undefined;
       continue;
     }
-    sheet.group = lookupRoster(roster, sheet.className, sheet.seatNo)?.group;
+    const entry = lookupRoster(roster, sheet.className, sheet.seatNo);
+    sheet.group = entry?.group;
+    sheet.groupEng = entry?.groupEng;
   }
 
   return next;

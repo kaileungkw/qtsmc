@@ -13,8 +13,10 @@ export interface RosterEntry {
   name: string;
   chiName?: string;
   engName?: string;
-  /** Maths lesson group, e.g. 1A1 / 4AB2 / 6CD1 (from the roster Group column). */
+  /** Maths lesson group, e.g. 1A1 / 4AB2 / 6CD1. */
   group?: string;
+  /** English lesson group, e.g. 1AB1 / 4CD2 / 6AB1. */
+  groupEng?: string;
 }
 
 export interface RosterData {
@@ -30,7 +32,16 @@ const SHEET_NAME = 'Student_namelist';
 const ROSTER_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(
   SHEET_NAME,
 )}`;
-const CACHE_KEY = 'qtsmc-roster-v3';
+// Lesson groups live in a keyed helper tab. 核對 is the tab the teacher
+// actually pasted into; Group/分組 are accepted if the helper is renamed later.
+const GROUP_SHEET_NAMES = ['核對', 'Group', '分組', 'Grouping'];
+const GROUP_URLS = GROUP_SHEET_NAMES.map(
+  (name) =>
+    `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(
+      name,
+    )}`,
+);
+const CACHE_KEY = 'qtsmc-roster-v4';
 const CACHE_TTL = 24 * 60 * 60 * 1000;
 
 interface CachedRoster {
@@ -85,13 +96,15 @@ function normaliseClass(value: unknown): string {
     .replace(/^S(?=\d)/, '');
 }
 
+function normaliseHeader(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_().-]+/g, '');
+}
+
 function findIndex(header: string[], names: string[]): number {
-  const normalised = header.map((h) =>
-    h
-      .trim()
-      .toLowerCase()
-      .replace(/[\s_().-]+/g, ''),
-  );
+  const normalised = header.map(normaliseHeader);
   for (const name of names) {
     const index = normalised.indexOf(name);
     if (index >= 0) return index;
@@ -124,8 +137,9 @@ export function parseRosterRows(rows: string[][]): RosterEntry[] {
   const numIndex = findIndex(header, ['num', '班號', 'classno', 'seatno', 'no']);
   const chiIndex = findIndex(header, ['chiname', '中文姓名', 'name', '姓名']);
   const engIndex = findIndex(header, ['engname', 'englishname', 'english']);
-  // The school sheet carries the 2627 Maths groups in an appended Group column.
-  const groupIndex = findIndex(header, ['group', 'mathgroup', '分組', '數學分組']);
+  // The school sheet carries the 2627 lesson groups in appended columns.
+  const groupIndex = findIndex(header, ['mathgroup', '數學分組', 'group', '分組']);
+  const groupEngIndex = findIndex(header, ['enggroup', 'englishgroup', '英文分組']);
   if (examIndex < 0 || classIndex < 0 || numIndex < 0) return [];
   const entries: RosterEntry[] = [];
   const seen = new Set<number>();
@@ -137,6 +151,8 @@ export function parseRosterRows(rows: string[][]): RosterEntry[] {
     const engName = engIndex >= 0 ? String(row[engIndex] ?? '').trim() : '';
     const rawGroup = groupIndex >= 0 ? String(row[groupIndex] ?? '').trim() : '';
     const group = rawGroup && rawGroup !== '#N/A' ? rawGroup : undefined;
+    const rawGroupEng = groupEngIndex >= 0 ? String(row[groupEngIndex] ?? '').trim() : '';
+    const groupEng = rawGroupEng && rawGroupEng !== '#N/A' ? rawGroupEng : undefined;
     const name = chiName || engName;
     if (!Number.isFinite(examId) || examId <= 0) continue;
     if (!/^[1-6][A-D]$/.test(cls)) continue;
@@ -152,6 +168,7 @@ export function parseRosterRows(rows: string[][]): RosterEntry[] {
       chiName: chiName || undefined,
       engName: engName || undefined,
       group,
+      groupEng,
     });
   }
   entries.sort(
@@ -164,6 +181,119 @@ export function parseRosterRows(rows: string[][]): RosterEntry[] {
 
 export function parseRosterCsv(text: string): RosterEntry[] {
   return parseRosterRows(parseCsv(text.replace(/^\uFEFF/, '')));
+}
+
+interface GroupRow {
+  examId?: number;
+  class?: string;
+  num?: number;
+  group?: string;
+  groupEng?: string;
+}
+
+function cleanGroup(value: unknown): string | undefined {
+  const text = String(value ?? '').replace(/\u00a0/g, ' ').trim();
+  return text && text !== '#N/A' && text !== '未分組' ? text : undefined;
+}
+
+/**
+ * Parse a keyed grouping tab such as 核對:
+ * ExamID / Class / Num / 姓名 / Group / EngGroup.
+ */
+export function parseGroupRows(rows: string[][]): GroupRow[] {
+  if (rows.length < 2) return [];
+  const headerIndex = rows.findIndex((row) => {
+    const header = row.map(normaliseHeader);
+    const hasKey =
+      header.includes('examid') ||
+      (header.includes('class') &&
+        (header.includes('num') || header.includes('班號')));
+    const hasGroup =
+      header.includes('group') ||
+      header.includes('mathgroup') ||
+      header.includes('enggroup') ||
+      header.includes('分組') ||
+      header.includes('數學分組') ||
+      header.includes('英文分組');
+    return hasKey && hasGroup;
+  });
+  if (headerIndex < 0) return [];
+  const header = rows[headerIndex];
+  const examIndex = findIndex(header, [
+    'examid',
+    '考生號碼',
+    'candidate',
+    'candidateno',
+    'studentno',
+  ]);
+  const classIndex = findIndex(header, ['class', '班別', 'classname']);
+  const numIndex = findIndex(header, ['num', '班號', 'classno', 'seatno', 'no']);
+  const groupIndex = findIndex(header, ['mathgroup', '數學分組', 'group', '分組']);
+  const groupEngIndex = findIndex(header, ['enggroup', 'englishgroup', '英文分組']);
+  if (groupIndex < 0 && groupEngIndex < 0) return [];
+  if (examIndex < 0 && (classIndex < 0 || numIndex < 0)) return [];
+
+  const result: GroupRow[] = [];
+  for (const row of rows.slice(headerIndex + 1)) {
+    const examId = examIndex >= 0 ? Number(String(row[examIndex] ?? '').replace(/\D/g, '')) : NaN;
+    const cls = classIndex >= 0 ? normaliseClass(row[classIndex]) : '';
+    const num = numIndex >= 0 ? Number(String(row[numIndex] ?? '').replace(/\D/g, '')) : NaN;
+    const group = groupIndex >= 0 ? cleanGroup(row[groupIndex]) : undefined;
+    const groupEng = groupEngIndex >= 0 ? cleanGroup(row[groupEngIndex]) : undefined;
+    if (!group && !groupEng) continue;
+    if (!Number.isFinite(examId) && (!/^[1-6][A-D]$/.test(cls) || !Number.isFinite(num))) {
+      continue;
+    }
+    result.push({
+      examId: Number.isFinite(examId) && examId > 0 ? examId : undefined,
+      class: /^[1-6][A-D]$/.test(cls) ? cls : undefined,
+      num: Number.isFinite(num) && num > 0 ? num : undefined,
+      group,
+      groupEng,
+    });
+  }
+  return result;
+}
+
+function applyGroupRows(entries: RosterEntry[], rows: GroupRow[]): boolean {
+  if (!rows.length) return false;
+  const byExam = new Map<number, RosterEntry>();
+  const byClassNum = new Map<string, RosterEntry>();
+  for (const entry of entries) {
+    byExam.set(entry.examId, entry);
+    byClassNum.set(`${entry.class}|${entry.num}`, entry);
+  }
+  let applied = false;
+  for (const row of rows) {
+    const entry =
+      (row.examId ? byExam.get(row.examId) : undefined) ??
+      (row.class && row.num ? byClassNum.get(`${row.class}|${row.num}`) : undefined);
+    if (!entry) continue;
+    if (row.group && entry.group !== row.group) {
+      entry.group = row.group;
+      applied = true;
+    }
+    if (row.groupEng && entry.groupEng !== row.groupEng) {
+      entry.groupEng = row.groupEng;
+      applied = true;
+    }
+  }
+  return applied;
+}
+
+async function fetchGroupRows(): Promise<GroupRow[]> {
+  for (const url of GROUP_URLS) {
+    try {
+      const response = await fetch(url, { cache: 'no-store' });
+      if (!response.ok) continue;
+      const text = await response.text();
+      const rows = parseGroupRows(parseCsv(text.replace(/^\uFEFF/, '')));
+      if (rows.length >= 10) return rows;
+    } catch {
+      // Try the next candidate tab name.
+    }
+  }
+  return [];
 }
 
 function buildRoster(entries: RosterEntry[], fetchedAt: number, fromCache: boolean): RosterData {
@@ -187,7 +317,9 @@ function readCache(): RosterData | null {
     }
     // A roster without any Group values may predate the teacher adding the
     // grouping column, so re-check it quickly instead of keeping it for a day.
-    const hasGroups = cached.entries.some((entry) => Boolean(entry.group));
+    const hasGroups = cached.entries.some(
+      (entry) => Boolean(entry.group || entry.groupEng),
+    );
     const ttl = hasGroups ? CACHE_TTL : 5 * 60 * 1000;
     if (Date.now() - cached.fetchedAt > ttl) return null;
     return buildRoster(cached.entries, cached.fetchedAt, true);
@@ -227,8 +359,9 @@ export async function loadRoster(force = false): Promise<RosterData> {
   // is now the single source of truth again.
   try {
     localStorage.removeItem('qtsmc-roster-custom-v1');
-    // v2 caches have no Group column; drop them so the grouping appears.
+    // v2/v3 caches predate the Group and EngGroup columns.
     localStorage.removeItem('qtsmc-roster-v2');
+    localStorage.removeItem('qtsmc-roster-v3');
   } catch {
     // Ignore storage restrictions.
   }
@@ -242,6 +375,10 @@ export async function loadRoster(force = false): Promise<RosterData> {
     const text = await response.text();
     const entries = parseRosterCsv(text);
     if (entries.length < 10) throw new Error('名單格式不正確或為空');
+    // Names come from Student_namelist; lesson groups may live in a separate
+    // keyed tab. A failure here must not stop the names from loading.
+    const groupRows = await fetchGroupRows();
+    applyGroupRows(entries, groupRows);
     writeCache(entries);
     return buildRoster(entries, Date.now(), false);
   } catch (error) {

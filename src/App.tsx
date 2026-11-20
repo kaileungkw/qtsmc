@@ -761,6 +761,7 @@ export default function App() {
             next.name = entry?.name ?? '';
             next.nameSource = entry ? 'roster' : 'default';
             next.group = entry?.group;
+            next.groupEng = entry?.groupEng;
             next.candidateNo = entry
               ? String(entry.examId).padStart(4, '0')
               : undefined;

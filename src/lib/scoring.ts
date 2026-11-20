@@ -293,6 +293,7 @@ export function analyseResults(
       className: sheet.className,
       seatNo: sheet.seatNo,
       group: sheet.group,
+      groupEng: sheet.groupEng,
       candidateNo: sheet.candidateNo,
       isKey: sheet.isKey,
       answers,

@@ -65,6 +65,8 @@ function summarise(students: StudentResult[], passMark: number): Summary {
 
 export const UNGROUPED = '未分組';
 
+export type GroupField = 'group' | 'groupEng';
+
 function buildStat(
   name: string,
   students: StudentResult[],
@@ -106,14 +108,18 @@ export function buildClassStats(analysis: Analysis, settings: Settings): ClassSt
 }
 
 /**
- * Maths lesson groups. Students whose roster row has no Group value are kept
- * in a visible 未分組 bucket instead of being dropped from the statistics.
+ * Lesson groups (Maths or English). Students whose roster row has no group
+ * value are kept in a visible 未分組 bucket instead of being dropped.
  */
-export function buildGroupStats(analysis: Analysis, settings: Settings): ClassStat[] {
+export function buildGroupStats(
+  analysis: Analysis,
+  settings: Settings,
+  field: GroupField = 'group',
+): ClassStat[] {
   const groups = new Map<string, StudentResult[]>();
   for (const student of analysis.included) {
     if (student.isKey) continue;
-    const name = student.group?.trim() || UNGROUPED;
+    const name = student[field]?.trim() || UNGROUPED;
     const list = groups.get(name) ?? [];
     list.push(student);
     groups.set(name, list);
