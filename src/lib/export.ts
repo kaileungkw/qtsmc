@@ -215,110 +215,140 @@ export async function exportXlsx(
   }
 
   // -------------------------------------------------------------------------
-  // 成績總表
+  // 成績總表／分組成績
   // -------------------------------------------------------------------------
+  function writeScoreSheet(ws: any, title: string, students: StudentResult[]): void {
+    styleTitle(ws, title, metaSubtitle(), 14 + groupOffset + count);
+    const scoreHeaders = [
+      '序號',
+      '班別',
+      '學號',
+      '姓名',
+      ...(showGroups ? ['分組'] : []),
+      '身份',
+      '得分',
+      '滿分',
+      '百分比',
+      '答對',
+      '答錯',
+      'blank',
+      'multi',
+      '存疑',
+      '備註',
+      ...qCols,
+    ];
+    ws.getRow(4).values = scoreHeaders;
+    styleHeader(ws, 4);
+    const widths = [6, 9, 9, 18, ...(showGroups ? [10] : []), 11, 8, 8, 10, 8, 8, 8, 8, 8, 18];
+    widths.forEach((width, i) => {
+      ws.getColumn(i + 1).width = width;
+    });
+    for (let i = 0; i < count; i++) {
+      ws.getColumn(15 + groupOffset + i).width = 7;
+    }
+
+    students.forEach((student, idx) => {
+      const wsRow = ws.getRow(5 + idx);
+      const wrong = Math.max(0, student.total - student.score);
+      wsRow.values = [
+        idx + 1,
+        student.className || '',
+        student.seatNo || '',
+        studentName(student.name, idx),
+        ...(showGroups ? [student.isKey ? '' : groupValue(student)] : []),
+        student.isKey ? '答案卷' : '學生',
+        student.isKey ? student.total : student.score,
+        student.total,
+        student.isKey ? 100 : student.percent,
+        student.isKey ? student.total : student.score,
+        student.isKey ? 0 : wrong,
+        student.blankCount,
+        student.multiCount,
+        student.lowCount,
+        exportNote(student),
+        ...qCols.map((_, i) => answerText(student.answers[i + 1] ?? 'blank', student.multiChoices?.[i + 1])),
+      ];
+      wsRow.height = 22;
+      wsRow.eachCell({ includeEmpty: true }, (cell: any, col: number) => {
+        cell.font = { name: FONT, size: 10, color: { argb: COLORS.text } };
+        cell.border = thinBorder;
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        if (col <= 14 + groupOffset) {
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: student.isKey ? COLORS.goldSoft : COLORS.white },
+          };
+        }
+      });
+      if (student.isKey) {
+        wsRow.getCell(4).font = { name: FONT, size: 10, bold: true, color: { argb: COLORS.gold } };
+      }
+      wsRow.getCell(8 + groupOffset).numFmt = '0.0"%"';
+      for (let q = 1; q <= count; q++) {
+        const cell = wsRow.getCell(14 + groupOffset + q);
+        const value = student.answers[q] ?? 'blank';
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: {
+            argb: answerFill(value, Boolean(student.correct[q]), student.isKey),
+          },
+        };
+        if (value === 'multi') {
+          cell.font = { name: FONT, size: 10, bold: true, color: { argb: 'FF5B3E86' } };
+        } else if (value === 'blank') {
+          cell.font = { name: FONT, size: 9, color: { argb: 'FF7A7A7A' } };
+        }
+      }
+    });
+    if (students.length === 0) {
+      ws.getCell('A5').value = '沒有可匯出的學生資料。';
+    }
+    ws.autoFilter = {
+      from: { row: 4, column: 1 },
+      to: { row: 4 + students.length, column: 14 + groupOffset + count },
+    };
+    ws.getCell(6 + students.length, 1).value =
+      '顏色：綠色＝答對、紅色＝答錯、灰色＝blank、紫色＝multi（逐題列出所選選項，例如 B, C）；金色列＝答案卷。';
+  }
+
   const scoreSheet = wb.addWorksheet('成績總表', {
     views: [{ state: 'frozen', xSplit: 4 + groupOffset, ySplit: 4 }],
     pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
   });
-  styleTitle(
+  writeScoreSheet(
     scoreSheet,
     `QTSMC 答題紙批改 — ${settings.title || '成績報告'}`,
-    metaSubtitle(),
-    14 + groupOffset + count,
+    analysis.students,
   );
-  const scoreHeaders = [
-    '序號',
-    '班別',
-    '學號',
-    '姓名',
-    ...(showGroups ? ['分組'] : []),
-    '身份',
-    '得分',
-    '滿分',
-    '百分比',
-    '答對',
-    '答錯',
-    'blank',
-    'multi',
-    '存疑',
-    '備註',
-    ...qCols,
-  ];
-  scoreSheet.getRow(4).values = scoreHeaders;
-  styleHeader(scoreSheet, 4);
-  const widths = [6, 9, 9, 18, ...(showGroups ? [10] : []), 11, 8, 8, 10, 8, 8, 8, 8, 8, 18];
-  widths.forEach((width, i) => {
-    scoreSheet.getColumn(i + 1).width = width;
-  });
-  for (let i = 0; i < count; i++) {
-    scoreSheet.getColumn(15 + groupOffset + i).width = 7;
-  }
 
-  analysis.students.forEach((student, idx) => {
-    const wsRow = scoreSheet.getRow(5 + idx);
-    const wrong = Math.max(0, student.total - student.score);
-    wsRow.values = [
-      idx + 1,
-      student.className || '',
-      student.seatNo || '',
-      studentName(student.name, idx),
-      ...(showGroups ? [student.isKey ? '' : groupValue(student)] : []),
-      student.isKey ? '答案卷' : '學生',
-      student.isKey ? student.total : student.score,
-      student.total,
-      student.isKey ? 100 : student.percent,
-      student.isKey ? student.total : student.score,
-      student.isKey ? 0 : wrong,
-      student.blankCount,
-      student.multiCount,
-      student.lowCount,
-      exportNote(student),
-      ...qCols.map((_, i) => answerText(student.answers[i + 1] ?? 'blank', student.multiChoices?.[i + 1])),
-    ];
-    wsRow.height = 22;
-    wsRow.eachCell({ includeEmpty: true }, (cell: any, col: number) => {
-      cell.font = { name: FONT, size: 10, color: { argb: COLORS.text } };
-      cell.border = thinBorder;
-      cell.alignment = { vertical: 'middle', horizontal: 'center' };
-      if (col <= 14 + groupOffset) {
-        cell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: student.isKey ? COLORS.goldSoft : COLORS.white },
-        };
-      }
+  // A group-ordered copy of the score table, immediately to the right of it:
+  // all 4AB1 rows, then 4AB2, ..., with 未分組 last.
+  if (showGroups) {
+    const groupedStudents = [...analysis.students].sort((a, b) => {
+      if (a.isKey !== b.isKey) return a.isKey ? -1 : 1;
+      const ga = groupValue(a);
+      const gb = groupValue(b);
+      const aUngrouped = ga === UNGROUPED;
+      const bUngrouped = gb === UNGROUPED;
+      if (aUngrouped !== bUngrouped) return aUngrouped ? 1 : -1;
+      const byGroup = ga.localeCompare(gb, 'zh-HK', { numeric: true });
+      if (byGroup) return byGroup;
+      const byClass = a.className.localeCompare(b.className, 'zh-HK', { numeric: true });
+      if (byClass) return byClass;
+      return (Number(a.seatNo) || 0) - (Number(b.seatNo) || 0);
     });
-    if (student.isKey) {
-      wsRow.getCell(4).font = { name: FONT, size: 10, bold: true, color: { argb: COLORS.gold } };
-    }
-    wsRow.getCell(8 + groupOffset).numFmt = '0.0"%"';
-    for (let q = 1; q <= count; q++) {
-      const cell = wsRow.getCell(14 + groupOffset + q);
-      const value = student.answers[q] ?? 'blank';
-      cell.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: {
-          argb: answerFill(value, Boolean(student.correct[q]), student.isKey),
-        },
-      };
-      if (value === 'multi') {
-        cell.font = { name: FONT, size: 10, bold: true, color: { argb: 'FF5B3E86' } };
-      } else if (value === 'blank') {
-        cell.font = { name: FONT, size: 9, color: { argb: 'FF7A7A7A' } };
-      }
-    }
-  });
-  if (analysis.students.length === 0) {
-    scoreSheet.getCell('A5').value = '沒有可匯出的學生資料。';
+    const groupScoreSheet = wb.addWorksheet('分組成績', {
+      views: [{ state: 'frozen', xSplit: 4 + groupOffset, ySplit: 4 }],
+      pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+    });
+    writeScoreSheet(
+      groupScoreSheet,
+      `分組成績 — ${settings.title || '成績報告'}`,
+      groupedStudents,
+    );
   }
-  scoreSheet.autoFilter = {
-    from: { row: 4, column: 1 },
-    to: { row: 4 + analysis.students.length, column: 14 + groupOffset + count },
-  };
-  scoreSheet.getCell(6 + analysis.students.length, 1).value =
-    '顏色：綠色＝答對、紅色＝答錯、灰色＝blank、紫色＝multi（逐題列出所選選項，例如 B, C）；金色列＝答案卷。';
 
   // -------------------------------------------------------------------------
   // 題目分析
