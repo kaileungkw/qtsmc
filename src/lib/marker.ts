@@ -860,12 +860,22 @@ function mergeHeaderFields(
   fallback: HeaderInfo | undefined,
 ): HeaderInfo | undefined {
   if (!primary && !fallback) return undefined;
-  const level = primary?.level ?? fallback?.level;
-  const classLetter = primary?.classLetter ?? fallback?.classLetter;
-  const classNo = primary?.classNo ?? fallback?.classNo;
+  // The header is read twice (enhanced + original). When the two readings
+  // disagree, prefer the higher-confidence one: a lower confidence means a
+  // field could not be read (for example a lightly shaded tens digit while
+  // the student corrects the number), and taking the incomplete reading first
+  // would discard the complete one. Missing fields still fall back as before.
+  const prefer =
+    (fallback?.confidence ?? -1) > (primary?.confidence ?? -1)
+      ? fallback
+      : primary;
+  const other = prefer === primary ? fallback : primary;
+  const level = prefer?.level ?? other?.level;
+  const classLetter = prefer?.classLetter ?? other?.classLetter;
+  const classNo = prefer?.classNo ?? other?.classNo;
   const classIndex = classLetter ? 'ABCD'.indexOf(classLetter) + 1 : undefined;
-  let className = level && classLetter ? `${level}${classLetter}` : primary?.className ?? fallback?.className;
-  let seatNo = primary?.seatNo ?? fallback?.seatNo;
+  let className = level && classLetter ? `${level}${classLetter}` : prefer?.className ?? other?.className;
+  let seatNo = prefer?.seatNo ?? other?.seatNo;
   if (level && classIndex && classNo) {
     const candidate = level * 1000 + classIndex * 100 + Number(classNo);
     seatNo = String(candidate).padStart(4, '0');
@@ -877,7 +887,7 @@ function mergeHeaderFields(
     className,
     seatNo,
     candidateNo: seatNo,
-    confidence: Math.max(primary?.confidence ?? 0, fallback?.confidence ?? 0),
+    confidence: prefer?.confidence ?? 0,
   };
 }
 
