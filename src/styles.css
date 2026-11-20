@@ -3406,15 +3406,18 @@ main {
   cursor: not-allowed;
 }
 
-.export-btn.xlsx {
+.export-btn.primary {
   background: var(--teal);
   border-color: var(--teal);
   color: #fff;
+  padding: 15px 14px;
+  box-shadow: 0 8px 18px rgba(23, 110, 105, 0.18);
 }
 
-.export-btn.xlsx:hover:not(:disabled) {
+.export-btn.primary:hover:not(:disabled) {
   background: var(--teal-2);
   border-color: var(--teal-2);
+  color: #fff;
 }
 
 .export-icon {
@@ -3425,11 +3428,6 @@ main {
   place-items: center;
   background: rgba(255, 255, 255, 0.16);
   flex: 0 0 auto;
-}
-
-.export-btn.csv .export-icon {
-  background: var(--gold-soft);
-  color: var(--gold);
 }
 
 .export-btn-copy {

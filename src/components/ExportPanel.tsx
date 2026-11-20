@@ -7,7 +7,6 @@ import {
   Download,
   FileArchive,
   FileJson,
-  FileSpreadsheet,
   Info,
   Loader2,
   Settings2,
@@ -20,7 +19,7 @@ import type {
   SheetOverrides,
   SourcePdf,
 } from '../types';
-import { exportCsvZip, exportXlsx } from '../lib/export';
+import { exportCsvZip } from '../lib/export';
 import { FORM_LEVELS, allSubjects, subjectGroups } from '../lib/subjects';
 import type { ToastKind } from './Toast';
 
@@ -60,7 +59,7 @@ export default function ExportPanel({
   onToast,
   autoCount,
 }: ExportPanelProps) {
-  const [busy, setBusy] = useState<'xlsx' | 'csv' | null>(null);
+  const [busy, setBusy] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const invalidKeys = analysis.questions.filter((q) => !q.keyValid).length;
   const fileBase = [
@@ -73,20 +72,16 @@ export default function ExportPanel({
   const ready =
     settings.questionCount > 0 && analysis.included.length > 0 && sheets.length > 0;
 
-  const runExport = async (kind: 'xlsx' | 'csv') => {
+  const runExport = async () => {
     if (!ready) {
       onToast('尚未有足夠資料匯出。請確認答案卷及學生答題紙。', 'warning');
       return;
     }
-    setBusy(kind);
+    setBusy(true);
     try {
       const ctx = { analysis, settings, sheets, sourcePdfs };
-      if (kind === 'xlsx') await exportXlsx(ctx);
-      else await exportCsvZip(ctx);
-      onToast(
-        kind === 'xlsx' ? '已下載 Excel 檔。' : '已下載所有報告及 PDF 壓縮檔。',
-        'success',
-      );
+      await exportCsvZip(ctx);
+      onToast('已下載所有報告及 PDF 壓縮檔。', 'success');
     } catch (error) {
       if (isStaleAssetError(error)) {
         const reload = window.confirm(
@@ -94,7 +89,7 @@ export default function ExportPanel({
         );
         if (reload) {
           try {
-            sessionStorage.setItem('qtsmc-pending-export', kind);
+            sessionStorage.setItem('qtsmc-pending-export', 'csv');
           } catch {
             // Reload still recovers the current deployment.
           }
@@ -109,7 +104,7 @@ export default function ExportPanel({
         'error',
       );
     } finally {
-      setBusy(null);
+      setBusy(false);
     }
   };
 
@@ -329,31 +324,12 @@ export default function ExportPanel({
           </div>
 
           <button
-            className="export-btn xlsx"
-            onClick={() => runExport('xlsx')}
-            disabled={!ready || busy !== null}
+            className="export-btn primary"
+            onClick={runExport}
+            disabled={!ready || busy}
           >
             <span className="export-icon">
-              {busy === 'xlsx' ? (
-                <Loader2 size={22} className="spin" />
-              ) : (
-                <FileSpreadsheet size={22} />
-              )}
-            </span>
-            <span className="export-btn-copy">
-              <strong>Excel 成績報告 (.xlsx)</strong>
-              <small>6 個工作表（可按班分拆）</small>
-            </span>
-            <Download size={18} />
-          </button>
-
-          <button
-            className="export-btn csv"
-            onClick={() => runExport('csv')}
-            disabled={!ready || busy !== null}
-          >
-            <span className="export-icon">
-              {busy === 'csv' ? (
+              {busy ? (
                 <Loader2 size={22} className="spin" />
               ) : (
                 <FileArchive size={22} />
