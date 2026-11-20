@@ -10,6 +10,7 @@ import type {
   Summary,
 } from '../types';
 import { OPTIONS, ROWS_PER_BLOCK } from './marker';
+import { flagsNeedReview } from './review';
 
 export const MAX_QUESTIONS = 60;
 
@@ -287,6 +288,11 @@ export function analyseResults(
     }
     const total = Math.max(1, questionCount);
     const percent = round1((score / total) * 100);
+    // Same rule as the score table: a sheet the teacher marked 覆核完成
+    // is no longer a review candidate (export 備註 follows this too).
+    const reviewed = !sheet.isKey && Boolean(sheet.reviewed);
+    const needsReview =
+      !reviewed && flagsNeedReview({ isKey: sheet.isKey, lowCount, multiCount, blankCount });
     students.push({
       id: sheet.id,
       name: sheet.name,
@@ -305,7 +311,8 @@ export function analyseResults(
       multiCount,
       lowCount,
       multiChoices,
-      needsReview: !sheet.isKey && (lowCount > 0 || multiCount > 0),
+      reviewed,
+      needsReview,
       suggested: sheet.suggested,
     });
   }

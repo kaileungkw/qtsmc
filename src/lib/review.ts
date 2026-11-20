@@ -33,16 +33,25 @@ export function isNamelessStudent(student: StudentResult): boolean {
   return !student.isKey && !student.name.trim();
 }
 
+/** Detection flags (存疑／多選／未填) that make a student a review candidate. */
+export function flagsNeedReview(student: {
+  isKey: boolean;
+  lowCount: number;
+  multiCount: number;
+  blankCount: number;
+}): boolean {
+  return (
+    !student.isKey &&
+    (student.lowCount > 0 || student.multiCount > 0 || student.blankCount > 0)
+  );
+}
+
 /** A student still needs review until the teacher presses 完成覆核. */
 export function needsReviewStudent(
   student: StudentResult,
   reviewed: boolean,
 ): boolean {
-  return (
-    !student.isKey &&
-    !reviewed &&
-    (student.lowCount > 0 || student.multiCount > 0 || student.blankCount > 0)
-  );
+  return !reviewed && flagsNeedReview(student);
 }
 
 /**

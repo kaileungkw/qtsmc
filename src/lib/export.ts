@@ -101,10 +101,13 @@ function groupFieldForSubject(subject: string): GroupField | null {
 function exportNote(student: {
   isKey: boolean;
   needsReview: boolean;
+  reviewed?: boolean;
   suggested?: { className?: boolean; seatNo?: boolean; name?: boolean };
 }): string {
   const notes: string[] = [];
   if (student.isKey) notes.push('答案卷（滿分）');
+  // Same wording as the score-table status: a reviewed sheet is no longer 需覆核.
+  else if (student.reviewed) notes.push('覆核完成');
   else if (student.needsReview) notes.push('需覆核');
   const suggested = student.suggested;
   const suggestedFields: string[] = [];

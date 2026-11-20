@@ -160,6 +160,8 @@ export interface StudentResult {
   /** For detected multi answers: the selected options, e.g. "B, C". */
   multiChoices?: Record<number, string>;
   needsReview: boolean;
+  /** The teacher pressed 完成覆核 for this sheet. */
+  reviewed: boolean;
   suggested?: SuggestedFields;
 }
 
