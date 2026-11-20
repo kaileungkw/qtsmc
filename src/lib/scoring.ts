@@ -364,13 +364,20 @@ export function shortAnswer(value: AnswerValue | undefined): string {
   return value;
 }
 
+/** The options that count as marked when a row is detected as multi. */
+export function selectedMultiOptions(
+  scores: Record<'A' | 'B' | 'C' | 'D', number>,
+): (typeof OPTIONS)[number][] {
+  const top = Math.max(scores.A, scores.B, scores.C, scores.D);
+  const floor = Math.max(0.21, top * 0.5);
+  return OPTIONS.filter((option) => scores[option] >= floor);
+}
+
 /** The marked options of a detected multi answer, in A-D order. */
 export function multiChoiceLabel(
   scores: Record<'A' | 'B' | 'C' | 'D', number>,
 ): string | undefined {
-  const top = Math.max(scores.A, scores.B, scores.C, scores.D);
-  const floor = Math.max(0.21, top * 0.5);
-  const selected = OPTIONS.filter((option) => scores[option] >= floor);
+  const selected = selectedMultiOptions(scores);
   return selected.length >= 2 ? selected.join(', ') : undefined;
 }
 

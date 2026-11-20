@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { AnswerValue, Detection } from '../types';
+import { selectedMultiOptions } from '../lib/scoring';
 
 interface SheetCanvasProps {
   src: string;
@@ -199,18 +200,19 @@ export default function SheetCanvas({
             ctx.stroke();
           }
         } else if (value === 'multi') {
-          // Show both options that triggered the multiple-mark warning.
-          const top = Math.max(...row.cells.map((cell) => cell.ink));
+          // Frame exactly the options reported as the multi answer. This must
+          // use the same floor as multiChoiceLabel, otherwise a lighter second
+          // mark can be listed as "A, B" but not boxed on the scan.
+          const selected = new Set(selectedMultiOptions(row.scores));
           for (const cell of row.cells) {
-            if (cell.ink >= Math.max(0.2, top * 0.6)) {
-              ctx.fillStyle = soft;
-              roundedRect(ctx, cell.cx - 12, cell.cy - 9, 24, 18, 4);
-              ctx.fill();
-              ctx.strokeStyle = color;
-              ctx.lineWidth = chosenLine;
-              roundedRect(ctx, cell.cx - 12, cell.cy - 9, 24, 18, 4);
-              ctx.stroke();
-            }
+            if (!selected.has(cell.option)) continue;
+            ctx.fillStyle = soft;
+            roundedRect(ctx, cell.cx - 12, cell.cy - 9, 24, 18, 4);
+            ctx.fill();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = chosenLine;
+            roundedRect(ctx, cell.cx - 12, cell.cy - 9, 24, 18, 4);
+            ctx.stroke();
           }
         }
 
