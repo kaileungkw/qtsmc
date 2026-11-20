@@ -1164,6 +1164,18 @@ export default function App() {
     },
     [sheets, showToast],
   );
+  // Undo 完成覆核; keep the modal open so the teacher can continue looking.
+  const undoCompleteReview = useCallback(
+    (id: string) => {
+      setSheets((prev) =>
+        prev.map((sheet) =>
+          sheet.id === id ? { ...sheet, reviewed: false } : sheet,
+        ),
+      );
+      showToast('已取消覆核完成；如仍有未填／多選／存疑，會重新列入需覆核。', 'success');
+    },
+    [showToast],
+  );
   const canShowResults =
     settings.questionCount > 0 &&
     sheets.some((s) => s.status === 'done' || s.detection?.ok);
@@ -1332,6 +1344,7 @@ export default function App() {
           onMeta={(patch) => editSheet(reviewSheet.id, patch)}
           onClose={() => setReviewId(null)}
           onComplete={() => completeReview(reviewSheet.id)}
+          onUndoComplete={() => undoCompleteReview(reviewSheet.id)}
           onPrev={() =>
             setReviewId(sheets[(reviewIndex - 1 + sheets.length) % sheets.length].id)
           }

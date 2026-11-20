@@ -104,6 +104,12 @@ export default function ScoreTable({
       count: counts.review,
       title: '包括存疑、多選及未填；完成覆核後會移出',
     },
+    {
+      id: 'reviewed',
+      label: '覆核完成',
+      count: counts.reviewed,
+      title: '已按完成覆核的學生；開啟後可取消覆核完成，重新列入需覆核',
+    },
     { id: 'blank', label: '未填', count: counts.blank },
     { id: 'multi', label: '多選', count: counts.multi },
     {

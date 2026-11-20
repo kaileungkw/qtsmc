@@ -3,6 +3,7 @@ import type { SheetRecord, StudentResult } from '../types';
 export type ScoreFilter =
   | 'all'
   | 'review'
+  | 'reviewed'
   | 'blank'
   | 'multi'
   | 'headers'
@@ -12,6 +13,7 @@ export type ScoreFilter =
 export interface FilterCounts {
   all: number;
   review: number;
+  reviewed: number;
   blank: number;
   multi: number;
   headers: number;
@@ -97,6 +99,8 @@ export function buildFilterCounts(
     review: students.filter((student) =>
       needsReviewStudent(student, reviewed.has(student.id)),
     ).length,
+    reviewed: students.filter((student) => !student.isKey && reviewed.has(student.id))
+      .length,
     blank: students.filter((student) => !student.isKey && student.blankCount > 0)
       .length,
     multi: students.filter((student) => !student.isKey && student.multiCount > 0)
@@ -119,6 +123,7 @@ export function matchesScoreFilter(
   if (filter === 'review') {
     return needsReviewStudent(student, context.reviewed.has(student.id));
   }
+  if (filter === 'reviewed') return context.reviewed.has(student.id);
   if (filter === 'blank') return student.blankCount > 0;
   if (filter === 'multi') return student.multiCount > 0;
   if (filter === 'headers') return context.headers.has(student.id);

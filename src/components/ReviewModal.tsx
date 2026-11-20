@@ -40,6 +40,7 @@ interface ReviewModalProps {
   onMeta: (patch: Partial<Pick<RuntimeSheet, 'name' | 'className' | 'seatNo'>>) => void;
   onClose: () => void;
   onComplete: () => void;
+  onUndoComplete: () => void;
   onPrev: () => void;
   onNext: () => void;
   onOpenKeyEditor: () => void;
@@ -60,6 +61,7 @@ export default function ReviewModal({
   onMeta,
   onClose,
   onComplete,
+  onUndoComplete,
   onPrev,
   onNext,
   onOpenKeyEditor,
@@ -471,9 +473,19 @@ export default function ReviewModal({
             </div>
 
             <div className="review-footer">
-              <button className="btn ghost small" onClick={onComplete}>
-                完成覆核
-              </button>
+              {sheet.reviewed ? (
+                <button
+                  className="btn ghost small"
+                  onClick={onUndoComplete}
+                  title="取消覆核完成；如仍有未填／多選／存疑，會重新列入需覆核"
+                >
+                  取消覆核完成
+                </button>
+              ) : (
+                <button className="btn ghost small" onClick={onComplete}>
+                  完成覆核
+                </button>
+              )}
               <div className="review-nav">
                 <button className="icon-btn" onClick={onPrev} aria-label="上一張">
                   <ArrowLeft size={16} />
