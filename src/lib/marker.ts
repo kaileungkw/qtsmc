@@ -356,6 +356,7 @@ interface CellScore {
   base: number;
   faint: number;
   coreDark: number;
+  coreCenter: number;
   median: number;
   cx: number;
   cy: number;
@@ -416,15 +417,21 @@ function measureBubble(
   const faint = shade >= 0.27 ? shade * 0.65 : 0;
   const base = 0.55 * dark + 0.45 * depthAvg;
   // Extra sensitivity for very light pencil hatching inside the printed ring.
-  // The strict inner core excludes the outline, so a blank bubble stays at 0.
+  // The strict inner core excludes most of the outline, but a slightly offset
+  // cell can still catch the anti-aliased top/bottom edge. Real pencil shading
+  // reaches the central band; printed-edge noise does not (see readFrame).
   const coreRx = Math.max(2, Math.round(bw * 0.16));
   const coreRy = Math.max(1, Math.round(bh * 0.12));
   let coreDark = 0;
+  let coreCenter = 0;
   let coreCount = 0;
   for (let y = cy - coreRy; y <= cy + coreRy; y++) {
     for (let x = cx - coreRx; x <= cx + coreRx; x++) {
       if (x < 0 || x >= width || y < 0 || y >= height) continue;
-      if (gray[y * width + x] < paper - 20) coreDark++;
+      if (gray[y * width + x] < paper - 20) {
+        coreDark++;
+        if (Math.abs(y - cy) <= 1) coreCenter++;
+      }
       coreCount++;
     }
   }
@@ -433,6 +440,7 @@ function measureBubble(
     base,
     faint,
     coreDark: coreCount ? coreDark / coreCount : 0,
+    coreCenter,
     median,
     cx,
     cy,
@@ -538,7 +546,12 @@ function readFrame(
         thr,
       );
       const option = OPTIONS[c];
-      const coreBoost = 0.6 * measured.coreDark;
+      // Only trust the inner-core boost when ink reaches the central band. An
+      // untouched bubble can still contribute a few dark pixels from the inner
+      // edge of the printed ring (especially in the top rows); boosting those
+      // made completely blank answers look like marks.
+      const coreBoost =
+        measured.coreCenter > 0 ? 0.6 * measured.coreDark : 0;
       baseScores[option] = Math.min(1, measured.base + coreBoost);
       faintScores[option] = Math.min(1, measured.faint + coreBoost);
       cells.push({
