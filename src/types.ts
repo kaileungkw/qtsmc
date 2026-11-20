@@ -74,6 +74,8 @@ export interface SheetRecord {
   name: string;
   className: string;
   seatNo: string;
+  /** Maths lesson group (from the roster Group column). */
+  group?: string;
   candidateNo?: string;
   isKey: boolean;
   status: SheetStatus;
@@ -139,6 +141,8 @@ export interface StudentResult {
   name: string;
   className: string;
   seatNo: string;
+  /** Maths lesson group, e.g. 1A1 / 4AB2 / 6CD1. */
+  group?: string;
   candidateNo?: string;
   isKey: boolean;
   answers: Record<number, AnswerValue>;

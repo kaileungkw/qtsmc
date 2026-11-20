@@ -760,6 +760,7 @@ export default function App() {
             // student who is not in the roster.
             next.name = entry?.name ?? '';
             next.nameSource = entry ? 'roster' : 'default';
+            next.group = entry?.group;
             next.candidateNo = entry
               ? String(entry.examId).padStart(4, '0')
               : undefined;

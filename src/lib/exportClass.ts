@@ -63,6 +63,33 @@ function summarise(students: StudentResult[], passMark: number): Summary {
   };
 }
 
+export const UNGROUPED = '未分組';
+
+function buildStat(
+  name: string,
+  students: StudentResult[],
+  analysis: Analysis,
+  settings: Settings,
+): ClassStat {
+  return {
+    name,
+    students,
+    count: students.length,
+    summary: summarise(students, settings.passMark),
+    questions: analysis.questions.map((question) => {
+      const correctCount = question.keyValid
+        ? students.filter((student) => student.answers[question.q] === question.key).length
+        : 0;
+      return {
+        q: question.q,
+        keyValid: question.keyValid,
+        correctCount,
+        correctPercent: round1((correctCount / Math.max(1, students.length)) * 100),
+      };
+    }),
+  };
+}
+
 export function buildClassStats(analysis: Analysis, settings: Settings): ClassStat[] {
   const groups = new Map<string, StudentResult[]>();
   for (const student of analysis.included) {
@@ -75,21 +102,27 @@ export function buildClassStats(analysis: Analysis, settings: Settings): ClassSt
   }
   return [...groups.entries()]
     .sort(([a], [b]) => a.localeCompare(b, 'zh-HK', { numeric: true }))
-    .map(([name, students]) => ({
-      name,
-      students,
-      count: students.length,
-      summary: summarise(students, settings.passMark),
-      questions: analysis.questions.map((question) => {
-        const correctCount = question.keyValid
-          ? students.filter((student) => student.answers[question.q] === question.key).length
-          : 0;
-        return {
-          q: question.q,
-          keyValid: question.keyValid,
-          correctCount,
-          correctPercent: round1((correctCount / Math.max(1, students.length)) * 100),
-        };
-      }),
-    }));
+    .map(([name, students]) => buildStat(name, students, analysis, settings));
+}
+
+/**
+ * Maths lesson groups. Students whose roster row has no Group value are kept
+ * in a visible 未分組 bucket instead of being dropped from the statistics.
+ */
+export function buildGroupStats(analysis: Analysis, settings: Settings): ClassStat[] {
+  const groups = new Map<string, StudentResult[]>();
+  for (const student of analysis.included) {
+    if (student.isKey) continue;
+    const name = student.group?.trim() || UNGROUPED;
+    const list = groups.get(name) ?? [];
+    list.push(student);
+    groups.set(name, list);
+  }
+  return [...groups.entries()]
+    .sort(([a], [b]) => {
+      if (a === UNGROUPED) return 1;
+      if (b === UNGROUPED) return -1;
+      return a.localeCompare(b, 'zh-HK', { numeric: true });
+    })
+    .map(([name, students]) => buildStat(name, students, analysis, settings));
 }

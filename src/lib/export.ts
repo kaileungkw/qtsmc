@@ -7,7 +7,7 @@ import type {
   SourcePdf,
 } from '../types';
 import { displayAnswer } from './scoring';
-import { buildClassStats, type ClassStat } from './exportClass';
+import { buildClassStats, buildGroupStats, UNGROUPED, type ClassStat } from './exportClass';
 
 export interface ExportContext {
   analysis: Analysis;
@@ -135,6 +135,13 @@ export async function exportXlsx(
   const count = settings.questionCount;
   const classStats = settings.splitByClass ? buildClassStats(analysis, settings) : [];
   const classCount = classStats.length;
+  // Maths classes are split into lesson groups. The roster Group column is the
+  // source; when it is missing entirely we leave the report unchanged.
+  const isMaths = settings.subject.trim() === '數學';
+  const groupStats = isMaths ? buildGroupStats(analysis, settings) : [];
+  const showGroups = groupStats.some((group) => group.name !== UNGROUPED);
+  const hasUngrouped = groupStats.some((group) => group.name === UNGROUPED);
+  const groupOffset = showGroups ? 1 : 0;
   const qCols = allQuestionColumns(count);
   const headerFill = {
     type: 'pattern',
@@ -194,20 +201,21 @@ export async function exportXlsx(
   // 成績總表
   // -------------------------------------------------------------------------
   const scoreSheet = wb.addWorksheet('成績總表', {
-    views: [{ state: 'frozen', xSplit: 4, ySplit: 4 }],
+    views: [{ state: 'frozen', xSplit: 4 + groupOffset, ySplit: 4 }],
     pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
   });
   styleTitle(
     scoreSheet,
     `QTSMC 答題紙批改 — ${settings.title || '成績報告'}`,
     metaSubtitle(),
-    14 + count,
+    14 + groupOffset + count,
   );
   const scoreHeaders = [
     '序號',
     '班別',
     '學號',
     '姓名',
+    ...(showGroups ? ['分組'] : []),
     '身份',
     '得分',
     '滿分',
@@ -222,12 +230,12 @@ export async function exportXlsx(
   ];
   scoreSheet.getRow(4).values = scoreHeaders;
   styleHeader(scoreSheet, 4);
-  const widths = [6, 9, 9, 18, 11, 8, 8, 10, 8, 8, 8, 8, 8, 18];
+  const widths = [6, 9, 9, 18, ...(showGroups ? [10] : []), 11, 8, 8, 10, 8, 8, 8, 8, 8, 18];
   widths.forEach((width, i) => {
     scoreSheet.getColumn(i + 1).width = width;
   });
   for (let i = 0; i < count; i++) {
-    scoreSheet.getColumn(15 + i).width = 7;
+    scoreSheet.getColumn(15 + groupOffset + i).width = 7;
   }
 
   analysis.students.forEach((student, idx) => {
@@ -238,6 +246,7 @@ export async function exportXlsx(
       student.className || '',
       student.seatNo || '',
       studentName(student.name, idx),
+      ...(showGroups ? [student.isKey ? '' : student.group || UNGROUPED] : []),
       student.isKey ? '答案卷' : '學生',
       student.isKey ? student.total : student.score,
       student.total,
@@ -255,7 +264,7 @@ export async function exportXlsx(
       cell.font = { name: FONT, size: 10, color: { argb: COLORS.text } };
       cell.border = thinBorder;
       cell.alignment = { vertical: 'middle', horizontal: 'center' };
-      if (col <= 14) {
+      if (col <= 14 + groupOffset) {
         cell.fill = {
           type: 'pattern',
           pattern: 'solid',
@@ -266,9 +275,9 @@ export async function exportXlsx(
     if (student.isKey) {
       wsRow.getCell(4).font = { name: FONT, size: 10, bold: true, color: { argb: COLORS.gold } };
     }
-    wsRow.getCell(8).numFmt = '0.0"%"';
+    wsRow.getCell(8 + groupOffset).numFmt = '0.0"%"';
     for (let q = 1; q <= count; q++) {
-      const cell = wsRow.getCell(14 + q);
+      const cell = wsRow.getCell(14 + groupOffset + q);
       const value = student.answers[q] ?? 'blank';
       cell.fill = {
         type: 'pattern',
@@ -289,7 +298,7 @@ export async function exportXlsx(
   }
   scoreSheet.autoFilter = {
     from: { row: 4, column: 1 },
-    to: { row: 4 + analysis.students.length, column: 14 + count },
+    to: { row: 4 + analysis.students.length, column: 14 + groupOffset + count },
   };
   scoreSheet.getCell(6 + analysis.students.length, 1).value =
     '顏色：綠色＝答對、紅色＝答錯、灰色＝blank、紫色＝multi（逐題列出所選選項，例如 B, C）；金色列＝答案卷。';
@@ -633,14 +642,14 @@ export async function exportXlsx(
         cls.name.replace(/[\/?*\[\]:]/g, ' ').trim().slice(0, 31) ||
         `班別${classStats.indexOf(cls) + 1}`;
       const ws = wb.addWorksheet(sheetName, {
-        views: [{ state: 'frozen', xSplit: 4, ySplit: 4 }],
+        views: [{ state: 'frozen', xSplit: 4 + groupOffset, ySplit: 4 }],
         pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
       });
       styleTitle(
         ws,
         `${cls.name} 班 — 成績及分析`,
         `${metaSubtitle()}　·　全班 ${cls.count} 人`,
-        13 + count,
+        13 + groupOffset + count,
       );
       ws.getRow(4).values = [
         '人數',
@@ -708,6 +717,7 @@ export async function exportXlsx(
         '班別',
         '學號',
         '姓名',
+        ...(showGroups ? ['分組'] : []),
         '得分',
         '滿分',
         '百分比',
@@ -721,10 +731,10 @@ export async function exportXlsx(
       ];
       ws.getRow(scoreHead).values = classScoreHeaders;
       styleHeader(ws, scoreHead);
-      [6, 9, 9, 18, 8, 8, 10, 8, 8, 8, 8, 8, 18].forEach((width, i) => {
+      [6, 9, 9, 18, ...(showGroups ? [10] : []), 8, 8, 10, 8, 8, 8, 8, 8, 18].forEach((width, i) => {
         ws.getColumn(i + 1).width = width;
       });
-      for (let i = 0; i < count; i++) ws.getColumn(14 + i).width = 7;
+      for (let i = 0; i < count; i++) ws.getColumn(14 + groupOffset + i).width = 7;
       cls.students.forEach((student, idx) => {
         const row = ws.getRow(scoreHead + 1 + idx);
         const correctCount = student.isKey ? student.total : student.score;
@@ -733,6 +743,7 @@ export async function exportXlsx(
           student.className || '',
           student.seatNo || '',
           studentName(student.name, idx),
+          ...(showGroups ? [student.isKey ? '' : student.group || UNGROUPED] : []),
           correctCount,
           student.total,
           student.percent,
@@ -754,7 +765,7 @@ export async function exportXlsx(
           cell.font = { name: FONT, size: 10, color: { argb: COLORS.text } };
           cell.border = thinBorder;
           cell.alignment = { vertical: 'middle', horizontal: 'center' };
-          if (cell.col <= 13) {
+          if (cell.col <= 13 + groupOffset) {
             cell.fill = {
               type: 'pattern',
               pattern: 'solid',
@@ -762,9 +773,9 @@ export async function exportXlsx(
             };
           }
         });
-        row.getCell(7).numFmt = '0.0"%"';
+        row.getCell(7 + groupOffset).numFmt = '0.0"%"';
         for (let q = 1; q <= count; q++) {
-          const cell = row.getCell(13 + q);
+          const cell = row.getCell(13 + groupOffset + q);
           const value = student.answers[q] ?? 'blank';
           cell.fill = {
             type: 'pattern',
@@ -789,6 +800,142 @@ export async function exportXlsx(
   }
 
   // -------------------------------------------------------------------------
+  // 分組統計（數學科）
+  // -------------------------------------------------------------------------
+  if (showGroups) {
+    const groupSheet = wb.addWorksheet('分組統計', {
+      views: [{ state: 'frozen', ySplit: 4 }],
+      pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+    });
+    styleTitle(
+      groupSheet,
+      '分組統計 — 全級及各組',
+      `${metaSubtitle()}　·　${groupStats.length} 組${hasUngrouped ? `（含 ${UNGROUPED}）` : ''}`,
+      8,
+    );
+    groupSheet.getRow(4).values = [
+      '分組',
+      '人數',
+      '平均分（%）',
+      '中位數（%）',
+      '最高（%）',
+      '最低（%）',
+      '標準差',
+      '及格率（%）',
+    ];
+    styleHeader(groupSheet, 4);
+    [10, 8, 12, 12, 10, 10, 10, 12].forEach((width, i) => {
+      groupSheet.getColumn(i + 1).width = width;
+    });
+    const groupSummaryRows = [
+      ...groupStats.map((group) => [
+        group.name,
+        group.count,
+        group.summary.average,
+        group.summary.median,
+        group.summary.highest,
+        group.summary.lowest,
+        group.summary.stdDev,
+        group.summary.passRate,
+      ]),
+      [
+        '全級',
+        analysis.included.length,
+        analysis.summary.average,
+        analysis.summary.median,
+        analysis.summary.highest,
+        analysis.summary.lowest,
+        analysis.summary.stdDev,
+        analysis.summary.passRate,
+      ],
+    ];
+    groupSummaryRows.forEach((values, idx) => {
+      const row = groupSheet.getRow(5 + idx);
+      row.values = values;
+      row.eachCell({ includeEmpty: true }, (cell: any) => {
+        cell.font = {
+          name: FONT,
+          size: 10,
+          bold: values[0] === '全級',
+          color: { argb: COLORS.text },
+        };
+        cell.border = thinBorder;
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        if (values[0] === '全級') {
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: COLORS.cream },
+          };
+        } else if (values[0] === UNGROUPED) {
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: COLORS.redSoft },
+          };
+        }
+      });
+      for (const col of [3, 4, 5, 6]) row.getCell(col).numFmt = '0.0"%"';
+      row.getCell(8).numFmt = '0.0"%"';
+    });
+    groupSheet.autoFilter = {
+      from: { row: 4, column: 1 },
+      to: { row: 4 + groupSummaryRows.length, column: 8 },
+    };
+
+    const groupQuestionHead = 5 + groupSummaryRows.length + 2;
+    groupSheet.getRow(groupQuestionHead).values = [
+      '題號',
+      '正確答案',
+      '全級答對%',
+      ...groupStats.flatMap((group) => [`${group.name} 答對人數`, `${group.name} 答對%`]),
+    ];
+    styleHeader(groupSheet, groupQuestionHead);
+    const groupQWidths = [8, 10, 12, ...groupStats.flatMap(() => [12, 10])];
+    groupQWidths.forEach((width, i) => {
+      groupSheet.getColumn(i + 1).width = width;
+    });
+    analysis.questions.forEach((question, idx) => {
+      const row = groupSheet.getRow(groupQuestionHead + 1 + idx);
+      row.values = [
+        `Q${question.q}`,
+        question.keyValid ? question.key : '未設定',
+        question.correctPercent,
+        ...groupStats.flatMap((group) => [
+          group.questions[idx].correctCount,
+          group.questions[idx].correctPercent,
+        ]),
+      ];
+      row.eachCell({ includeEmpty: true }, (cell: any) => {
+        cell.font = { name: FONT, size: 10, color: { argb: COLORS.text } };
+        cell.border = thinBorder;
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      });
+      row.getCell(3).numFmt = '0.0"%"';
+      row.getCell(3).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: percentileColor(question.correctPercent) },
+      };
+      groupStats.forEach((group, groupIndex) => {
+        const percentCell = row.getCell(4 + groupIndex * 2 + 1);
+        percentCell.numFmt = '0.0"%"';
+        percentCell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: percentileColor(group.questions[idx].correctPercent) },
+        };
+      });
+    });
+    if (hasUngrouped) {
+      groupSheet.getCell(
+        groupQuestionHead + 2 + analysis.questions.length,
+        1,
+      ).value = `${UNGROUPED}：名單未有 Group 資料，或學生不在現行名單內。`;
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // 設定
   // -------------------------------------------------------------------------
   const settingsSheet = wb.addWorksheet('設定');
@@ -808,6 +955,16 @@ export async function exportXlsx(
     ['及格分數規則', settings.passMarkAuto ? '自動（高中40%／初中50%）' : '手動'],
     ['答案卷是否計入統計', settings.includeKey ? '是' : '否'],
     ['按班別分拆匯出', settings.splitByClass ? '是' : '否'],
+    ...(isMaths
+      ? ([
+          [
+            '分組統計',
+            showGroups
+              ? `是（${groupStats.length - (hasUngrouped ? 1 : 0)} 組${hasUngrouped ? `，另有 ${UNGROUPED}` : ''}）`
+              : '否（全校名單未有 Group 資料）',
+          ],
+        ] as [string, string][])
+      : []),
     ['學生數（計入統計）', analysis.included.length],
     ['產生時間', new Date().toLocaleString('zh-HK')],
     ['系統', 'QTSMC 答題紙批改'],
@@ -848,6 +1005,10 @@ export async function exportCsvZip(ctx: ExportContext): Promise<void> {
   const { analysis, settings } = ctx;
   const count = settings.questionCount;
   const classStats = settings.splitByClass ? buildClassStats(analysis, settings) : [];
+  const isMaths = settings.subject.trim() === '數學';
+  const groupStats = isMaths ? buildGroupStats(analysis, settings) : [];
+  const showGroups = groupStats.some((group) => group.name !== UNGROUPED);
+  const hasUngrouped = groupStats.some((group) => group.name === UNGROUPED);
   const qCols = allQuestionColumns(count);
   const date = excelDateLabel(settings.date);
   const lines: string[] = [];
@@ -869,6 +1030,7 @@ export async function exportCsvZip(ctx: ExportContext): Promise<void> {
       '班別',
       '學號',
       '姓名',
+      ...(showGroups ? ['分組'] : []),
       '身份',
       '得分',
       '滿分',
@@ -889,6 +1051,7 @@ export async function exportCsvZip(ctx: ExportContext): Promise<void> {
         student.className,
         student.seatNo,
         studentName(student.name, idx),
+        ...(showGroups ? [student.isKey ? '' : student.group || UNGROUPED] : []),
         student.isKey ? '答案卷' : '學生',
         student.isKey ? student.total : student.score,
         student.total,
@@ -1078,6 +1241,7 @@ export async function exportCsvZip(ctx: ExportContext): Promise<void> {
         '班別',
         '學號',
         '姓名',
+        ...(showGroups ? ['分組'] : []),
         '得分',
         '滿分',
         '百分比',
@@ -1097,6 +1261,7 @@ export async function exportCsvZip(ctx: ExportContext): Promise<void> {
           student.className,
           student.seatNo,
           studentName(student.name, idx),
+          ...(showGroups ? [student.isKey ? '' : student.group || UNGROUPED] : []),
           student.score,
           student.total,
           student.percent,
@@ -1118,6 +1283,77 @@ export async function exportCsvZip(ctx: ExportContext): Promise<void> {
     return classLines.join('\r\n');
   };
 
+  const groupSummaryLines: string[] = [];
+  if (showGroups) {
+    groupSummaryLines.push(csvLine(['QTSMC 分組統計', settings.title || '']));
+    groupSummaryLines.push(
+      csvLine([
+        '分組',
+        '人數',
+        '平均分（%）',
+        '中位數（%）',
+        '最高（%）',
+        '最低（%）',
+        '標準差',
+        `及格率（≥${settings.passMark}%）`,
+      ]),
+    );
+    for (const group of groupStats) {
+      groupSummaryLines.push(
+        csvLine([
+          group.name,
+          group.count,
+          group.summary.average,
+          group.summary.median,
+          group.summary.highest,
+          group.summary.lowest,
+          group.summary.stdDev,
+          group.summary.passRate,
+        ]),
+      );
+    }
+    groupSummaryLines.push(
+      csvLine([
+        '全級',
+        analysis.included.length,
+        summary.average,
+        summary.median,
+        summary.highest,
+        summary.lowest,
+        summary.stdDev,
+        summary.passRate,
+      ]),
+    );
+    groupSummaryLines.push('');
+    groupSummaryLines.push(
+      csvLine([
+        '題號',
+        '正確答案',
+        '全級答對%',
+        ...groupStats.flatMap((group) => [`${group.name} 答對人數`, `${group.name} 答對%`]),
+      ]),
+    );
+    for (const [idx, stat] of analysis.questions.entries()) {
+      groupSummaryLines.push(
+        csvLine([
+          `Q${stat.q}`,
+          stat.keyValid ? stat.key : '未設定',
+          stat.correctPercent,
+          ...groupStats.flatMap((group) => [
+            group.questions[idx].correctCount,
+            group.questions[idx].correctPercent,
+          ]),
+        ]),
+      );
+    }
+    if (hasUngrouped) {
+      groupSummaryLines.push('');
+      groupSummaryLines.push(
+        csvLine([`${UNGROUPED}：名單未有 Group 資料，或學生不在現行名單內。`]),
+      );
+    }
+  }
+
   const zip = new JSZip();
   const csvFolder = zip.folder('csv');
   if (!csvFolder) throw new Error('未能建立 CSV 資料夾。');
@@ -1134,6 +1370,9 @@ export async function exportCsvZip(ctx: ExportContext): Promise<void> {
         `\uFEFF${classScoreCsv(cls)}`,
       );
     }
+  }
+  if (showGroups) {
+    csvFolder.file('分組統計.csv', `\uFEFF${groupSummaryLines.join('\r\n')}`);
   }
 
   // One ZIP with the complete workbook, the original uploaded PDFs and a

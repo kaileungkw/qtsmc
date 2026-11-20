@@ -292,6 +292,7 @@ export function analyseResults(
       name: sheet.name,
       className: sheet.className,
       seatNo: sheet.seatNo,
+      group: sheet.group,
       candidateNo: sheet.candidateNo,
       isKey: sheet.isKey,
       answers,

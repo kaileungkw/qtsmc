@@ -236,5 +236,16 @@ export function applyRosterAndSuggestions<T extends SheetRecord>(
     }
   }
 
+  // 4) Attach the Maths lesson group from the same roster row. Existing saved
+  // tasks are re-run through this function on boot, so the group follows a
+  // corrected class/seat without needing to re-import anything.
+  for (const sheet of next) {
+    if (sheet.isKey) {
+      sheet.group = undefined;
+      continue;
+    }
+    sheet.group = lookupRoster(roster, sheet.className, sheet.seatNo)?.group;
+  }
+
   return next;
 }
