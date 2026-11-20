@@ -898,17 +898,26 @@ export function analyseGray(
   // a fourth, wider false frame; keep the three frames with consistent block
   // widths and heights before applying the shared row template.
   if (frames.length > 3) {
-    const widths = frames.map((f) => f.w).sort((a, b) => a - b);
-    const heights = frames.map((f) => f.h).sort((a, b) => a - b);
-    const mid = Math.floor(frames.length / 2);
+    // A duplicated border can yield two near-identical candidates for the same
+    // block whose size still passes the tolerance test. If we simply take the
+    // first three by x, that duplicate can occupy a slot and push a real answer
+    // block (usually the third, with the last questions) out of the list. Only
+    // frames that actually show the printed 80-bubble grid are eligible.
+    const supported = frames.filter(
+      (f) => frameGridSupport(gray, width, height, f) >= 0.65,
+    );
+    const pool = supported.length >= 3 ? supported : frames;
+    const widths = pool.map((f) => f.w).sort((a, b) => a - b);
+    const heights = pool.map((f) => f.h).sort((a, b) => a - b);
+    const mid = Math.floor(pool.length / 2);
     const medianW = widths[mid];
     const medianH = heights[mid];
-    const consistent = frames.filter(
+    const consistent = pool.filter(
       (f) =>
         Math.abs(f.w - medianW) <= 0.18 * medianW &&
         Math.abs(f.h - medianH) <= 0.18 * medianH,
     );
-    frames = (consistent.length >= 3 ? consistent : frames).slice(0, 3);
+    frames = (consistent.length >= 3 ? consistent : pool).slice(0, 3);
   }
   // The three answer blocks are printed side by side on one baseline. A broken
   // scan edge can truncate one block's border lines; normalise their vertical
