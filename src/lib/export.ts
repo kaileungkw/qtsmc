@@ -217,8 +217,18 @@ export async function exportXlsx(
   // -------------------------------------------------------------------------
   // 成績總表／分組成績
   // -------------------------------------------------------------------------
-  function writeScoreSheet(ws: any, title: string, students: StudentResult[]): void {
-    styleTitle(ws, title, metaSubtitle(), 14 + groupOffset + count);
+  function writeScoreSheet(
+    ws: any,
+    title: string,
+    students: StudentResult[],
+    options?: { subtitleSuffix?: string; keyNote?: boolean },
+  ): void {
+    styleTitle(
+      ws,
+      title,
+      `${metaSubtitle()}${options?.subtitleSuffix ?? ''}`,
+      14 + groupOffset + count,
+    );
     const scoreHeaders = [
       '序號',
       '班別',
@@ -310,8 +320,15 @@ export async function exportXlsx(
       to: { row: 4 + students.length, column: 14 + groupOffset + count },
     };
     ws.getCell(6 + students.length, 1).value =
-      '顏色：綠色＝答對、紅色＝答錯、灰色＝blank、紫色＝multi（逐題列出所選選項，例如 B, C）；金色列＝答案卷。';
+      options?.keyNote === false
+        ? '顏色：綠色＝答對、紅色＝答錯、灰色＝blank、紫色＝multi（逐題列出所選選項，例如 B, C）。'
+        : '顏色：綠色＝答對、紅色＝答錯、灰色＝blank、紫色＝multi（逐題列出所選選項，例如 B, C）；金色列＝答案卷。';
   }
+
+  const byClassSeat = (a: StudentResult, b: StudentResult): number =>
+    a.className.localeCompare(b.className, 'zh-HK', { numeric: true }) ||
+    (Number(a.seatNo) || 0) - (Number(b.seatNo) || 0) ||
+    a.name.localeCompare(b.name, 'zh-HK');
 
   const scoreSheet = wb.addWorksheet('成績總表', {
     views: [{ state: 'frozen', xSplit: 4 + groupOffset, ySplit: 4 }],
@@ -335,9 +352,7 @@ export async function exportXlsx(
       if (aUngrouped !== bUngrouped) return aUngrouped ? 1 : -1;
       const byGroup = ga.localeCompare(gb, 'zh-HK', { numeric: true });
       if (byGroup) return byGroup;
-      const byClass = a.className.localeCompare(b.className, 'zh-HK', { numeric: true });
-      if (byClass) return byClass;
-      return (Number(a.seatNo) || 0) - (Number(b.seatNo) || 0);
+      return byClassSeat(a, b);
     });
     const groupScoreSheet = wb.addWorksheet('分組成績', {
       views: [{ state: 'frozen', xSplit: 4 + groupOffset, ySplit: 4 }],
@@ -980,6 +995,33 @@ export async function exportXlsx(
         1,
       ).value = `${UNGROUPED}：名單未有 Group 資料，或學生不在現行名單內。`;
     }
+
+    // One worksheet per group, mirroring the per-class sheets: the same score
+    // table as 成績總表, but only that group's students.
+    const usedSheetNames = new Set<string>(
+      wb.worksheets.map((sheet: any) => String(sheet.name)),
+    );
+    groupStats.forEach((group, index) => {
+      if (group.name === UNGROUPED) return;
+      const students = [...group.students].sort(byClassSeat);
+      let sheetName =
+        group.name.replace(/[\/?*\[\]:]/g, ' ').trim().slice(0, 31) ||
+        `組別${index + 1}`;
+      if (usedSheetNames.has(sheetName)) {
+        let suffix = 2;
+        while (usedSheetNames.has(`${sheetName} (${suffix})`)) suffix++;
+        sheetName = `${sheetName} (${suffix})`;
+      }
+      usedSheetNames.add(sheetName);
+      const ws = wb.addWorksheet(sheetName, {
+        views: [{ state: 'frozen', xSplit: 4 + groupOffset, ySplit: 4 }],
+        pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+      });
+      writeScoreSheet(ws, `${group.name} 組 — 成績`, students, {
+        subtitleSuffix: `　·　全組 ${students.length} 人`,
+        keyNote: false,
+      });
+    });
   }
 
   // -------------------------------------------------------------------------
