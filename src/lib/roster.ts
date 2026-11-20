@@ -315,13 +315,9 @@ function readCache(): RosterData | null {
     if (!cached || !Array.isArray(cached.entries) || cached.entries.length === 0) {
       return null;
     }
-    // A roster without any Group values may predate the teacher adding the
-    // grouping column, so re-check it quickly instead of keeping it for a day.
-    const hasGroups = cached.entries.some(
-      (entry) => Boolean(entry.group || entry.groupEng),
-    );
-    const ttl = hasGroups ? CACHE_TTL : 5 * 60 * 1000;
-    if (Date.now() - cached.fetchedAt > ttl) return null;
+    // Names are cached for a day; lesson groups are refreshed on every load
+    // (see loadRoster) so a corrected Group/EngGroup appears on reload.
+    if (Date.now() - cached.fetchedAt > CACHE_TTL) return null;
     return buildRoster(cached.entries, cached.fetchedAt, true);
   } catch {
     return null;
@@ -343,11 +339,11 @@ function staleCache(): RosterData | null {
   }
 }
 
-function writeCache(entries: RosterEntry[]): void {
+function writeCache(entries: RosterEntry[], fetchedAt = Date.now()): void {
   try {
     localStorage.setItem(
       CACHE_KEY,
-      JSON.stringify({ fetchedAt: Date.now(), entries } satisfies CachedRoster),
+      JSON.stringify({ fetchedAt, entries } satisfies CachedRoster),
     );
   } catch {
     // Quota or private mode: the roster still works for this session.
@@ -365,27 +361,44 @@ export async function loadRoster(force = false): Promise<RosterData> {
   } catch {
     // Ignore storage restrictions.
   }
+
+  let entries: RosterEntry[] | null = null;
+  let fetchedAt = Date.now();
+  let fromCache = false;
   if (!force) {
     const cached = readCache();
-    if (cached) return cached;
+    if (cached) {
+      entries = cached.entries;
+      fetchedAt = cached.fetchedAt;
+      fromCache = true;
+    }
   }
-  try {
-    const response = await fetch(ROSTER_URL, { cache: 'no-store' });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const text = await response.text();
-    const entries = parseRosterCsv(text);
-    if (entries.length < 10) throw new Error('名單格式不正確或為空');
-    // Names come from Student_namelist; lesson groups may live in a separate
-    // keyed tab. A failure here must not stop the names from loading.
-    const groupRows = await fetchGroupRows();
-    applyGroupRows(entries, groupRows);
-    writeCache(entries);
-    return buildRoster(entries, Date.now(), false);
-  } catch (error) {
-    const cached = staleCache();
-    if (cached) return cached;
-    throw error;
+  if (!entries) {
+    try {
+      const response = await fetch(ROSTER_URL, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const text = await response.text();
+      entries = parseRosterCsv(text);
+      if (entries.length < 10) throw new Error('名單格式不正確或為空');
+      fetchedAt = Date.now();
+    } catch (error) {
+      const cached = staleCache();
+      if (!cached) throw error;
+      entries = cached.entries;
+      fetchedAt = cached.fetchedAt;
+      fromCache = true;
+    }
   }
+
+  // Lesson groups change more often than names. Fetch them on every load so a
+  // newly pasted or corrected Group/EngGroup is visible on the next reload; a
+  // failure leaves the last known values in place.
+  const groupRows = await fetchGroupRows();
+  if (groupRows.length) {
+    const changed = applyGroupRows(entries, groupRows);
+    if (changed || !fromCache) writeCache(entries, fetchedAt);
+  }
+  return buildRoster(entries, fetchedAt, fromCache);
 }
 
 export function lookupRoster(
