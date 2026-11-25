@@ -312,7 +312,7 @@ export default function Results({
       count: counts.review,
       tone: 'info',
       icon: Sparkles,
-      title: '存疑、多選、未填作答或已重新對位；按此只看需覆核的學生。',
+      title: '存疑、多選、未填作答，或答題框位置有問題；按此只看需覆核的學生。',
       onClick: () => showScores('review'),
     });
   }

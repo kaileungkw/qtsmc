@@ -377,6 +377,17 @@ export default function ReviewModal({
                   </button>
                 </div>
               )}
+              {detection.layoutMismatch && (
+                <div className="key-edit-banner" role="status">
+                  <AlertTriangle size={15} />
+                  <div>
+                    <strong>答題框未能核對</strong>
+                    <span>
+                      此頁未能確認三個答題框的位置，未能自動修正；作答未必可靠，請逐題核對。
+                    </span>
+                  </div>
+                </div>
+              )}
               {detection.realigned && (
                 <div className="key-edit-banner" role="status">
                   <AlertTriangle size={15} />

@@ -38,7 +38,7 @@ export function isNamelessStudent(student: StudentResult): boolean {
 /**
  * What makes a student a review candidate: the detection flags (存疑／多選／
  * 未填), or a sheet whose answer blocks were placed from the other sheets of
- * the batch because its own frames were wrong.
+ * the batch because its own frames were wrong, or still do not match theirs.
  */
 export function flagsNeedReview(student: {
   isKey: boolean;
@@ -46,13 +46,15 @@ export function flagsNeedReview(student: {
   multiCount: number;
   blankCount: number;
   realigned?: boolean;
+  layoutMismatch?: boolean;
 }): boolean {
   return (
     !student.isKey &&
     (student.lowCount > 0 ||
       student.multiCount > 0 ||
       student.blankCount > 0 ||
-      Boolean(student.realigned))
+      Boolean(student.realigned) ||
+      Boolean(student.layoutMismatch))
   );
 }
 

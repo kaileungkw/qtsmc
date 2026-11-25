@@ -104,6 +104,8 @@ function exportNote(student: {
   reviewed?: boolean;
   /** Answer blocks were placed from the other sheets of the batch. */
   realigned?: boolean;
+  /** Answer blocks still do not match the other sheets of the batch. */
+  layoutMismatch?: boolean;
   suggested?: { className?: boolean; seatNo?: boolean; name?: boolean };
 }): string {
   const notes: string[] = [];
@@ -112,6 +114,7 @@ function exportNote(student: {
   else if (student.reviewed) notes.push('覆核完成');
   else if (student.needsReview) notes.push('需覆核');
   if (student.realigned) notes.push('重新對位');
+  if (student.layoutMismatch) notes.push('答題框未能核對');
   const suggested = student.suggested;
   const suggestedFields: string[] = [];
   if (suggested?.className) suggestedFields.push('班別');

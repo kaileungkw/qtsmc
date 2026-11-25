@@ -990,10 +990,47 @@ export function buildLayoutGuide(detections: Detection[]): LayoutGuide | undefin
   return { frames, rotation: group[0].rotation, pages: same.length };
 }
 
-/** A sheet already shows all three blocks where the other sheets have them. */
+/**
+ * How far a sheet's blocks may sit from the batch's before the sheet counts
+ * as a different layout. The sheets of one batch differ by up to ~30 px and
+ * ~6% (feed skew and print scale), whereas a block that was missed, found
+ * twice or measured badly is off by far more than that.
+ */
+const BLOCK_SHIFT_PX = 50;
+const BLOCK_RESIZE = 0.12;
+
+/** Shown on a sheet whose blocks are not where the other sheets have them. */
+export const LAYOUT_MISMATCH_NOTE =
+  '答題框位置與同批其他答題紙不符，未能自動修正；請覆核作答。';
+
+/** Shown when there are too few sheets to compare with and the three blocks
+ *  cannot be made out on the sheet itself. */
+export const LAYOUT_UNCONFIRMED_NOTE = '三個答題框的位置未能確認；請覆核作答。';
+
+function blocksDiffer(frames: Frame[], layout: Frame[]): boolean {
+  if (frames.length !== layout.length || !hasBlockLayout(frames)) return true;
+  return frames.some((f, i) => {
+    const g = layout[i];
+    return (
+      Math.abs(f.x - g.x) > BLOCK_SHIFT_PX ||
+      Math.abs(f.y - g.y) > BLOCK_SHIFT_PX ||
+      Math.abs(f.w - g.w) > BLOCK_RESIZE * g.w ||
+      Math.abs(f.h - g.h) > BLOCK_RESIZE * g.h
+    );
+  });
+}
+
+/**
+ * A sheet needs the batch layout when its own frames do not show the three
+ * blocks where the other sheets have them: too few, unevenly spaced (one
+ * found twice), or off in place or size.
+ */
 export function needsLayoutGuide(detection: Detection, guide: LayoutGuide): boolean {
   if (detection.ok && detection.rotation !== guide.rotation) return false;
-  return !(detection.ok && hasBlockLayout(detection.frames));
+  return blocksDiffer(
+    detection.frames,
+    guideOnPage(guide, detection.width, detection.height),
+  );
 }
 
 function linearFit(points: [number, number][]): { a: number; b: number } | undefined {
@@ -1312,16 +1349,24 @@ export function analyseGray(
   // Reject false "frames" such as page-table cells on a sideways scan. Every
   // genuine block has printed bubble outlines at all 80 template positions.
   frames = frames.filter((f) => frameGridSupport(gray, width, height, f) >= 0.65);
-  // A block found twice or not at all: place the batch's blocks on this sheet.
+  // A block found twice or not at all is first put right from the batch
+  // layout. Whatever cannot be confirmed after that is reported, so that the
+  // sheet is reviewed instead of trusted.
   let realigned = false;
+  let mismatch: 'batch' | 'sheet' | undefined;
   if (guide) {
-    const placed = placeBlocksOnSheet(gray, width, height, frames, guide);
+    const layout = guideOnPage(guide, width, height);
+    const placed = placeBlocks(gray, width, height, frames, layout);
     if (placed) {
       // Blocks the sheet found itself stay exactly as found; a placed block
       // already carries the geometry fitted to its own printed grid.
       frames = placed;
       realigned = true;
     }
+    if (blocksDiffer(frames, layout)) mismatch = 'batch';
+  } else if (frames.length !== 3 || !hasBlockLayout(frames)) {
+    // Too few sheets to compare with: the sheet itself must show three blocks.
+    mismatch = 'sheet';
   }
   if (frames.length < 2) {
     return {
@@ -1367,6 +1412,8 @@ export function analyseGray(
   }
   const warnings: string[] = [];
   if (realigned) warnings.push(REALIGN_NOTE);
+  if (mismatch === 'batch') warnings.push(LAYOUT_MISMATCH_NOTE);
+  else if (mismatch === 'sheet' && frames.length === 3) warnings.push(LAYOUT_UNCONFIRMED_NOTE);
   if (frames.length < 3) {
     warnings.push(
       `只偵測到 ${frames.length} 個答題欄；題號可能不完整，請檢查影像是否被裁切。`,
@@ -1382,6 +1429,7 @@ export function analyseGray(
     warnings,
     header,
     realigned,
+    layoutMismatch: Boolean(mismatch),
     elapsedMs: Math.round(performance.now() - started),
   };
 }

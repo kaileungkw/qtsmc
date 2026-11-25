@@ -292,6 +292,7 @@ export function analyseResults(
     // is no longer a review candidate (export 備註 follows this too).
     const reviewed = !sheet.isKey && Boolean(sheet.reviewed);
     const realigned = Boolean(sheet.detection.realigned);
+    const layoutMismatch = Boolean(sheet.detection.layoutMismatch);
     const needsReview =
       !reviewed &&
       flagsNeedReview({
@@ -300,6 +301,7 @@ export function analyseResults(
         multiCount,
         blankCount,
         realigned,
+        layoutMismatch,
       });
     students.push({
       id: sheet.id,
@@ -322,6 +324,7 @@ export function analyseResults(
       reviewed,
       needsReview,
       realigned,
+      layoutMismatch,
       suggested: sheet.suggested,
     });
   }

@@ -61,6 +61,15 @@ export interface Detection {
    * blocks were placed from the other sheets of the batch. Needs review.
    */
   realigned?: boolean;
+  /**
+   * The three answer blocks could not be confirmed on this sheet. After the
+   * cross-check with the batch they still do not sit where the other sheets
+   * have them (too few, unevenly spaced, or off in place or size), or there
+   * were too few sheets to compare with and the sheet itself does not show
+   * three blocks. The answers may have been read from the wrong place.
+   * Needs review.
+   */
+  layoutMismatch?: boolean;
   elapsedMs: number;
 }
 
@@ -181,6 +190,8 @@ export interface StudentResult {
   reviewed: boolean;
   /** The answer blocks were placed from the other sheets of the batch. */
   realigned: boolean;
+  /** The answer blocks still do not match the other sheets of the batch. */
+  layoutMismatch: boolean;
   suggested?: SuggestedFields;
 }
 
