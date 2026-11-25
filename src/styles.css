@@ -6072,12 +6072,42 @@ body:has(.modal-backdrop) .toast {
 }
 
 .survey-review-side {
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   min-height: 0;
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
   gap: 14px;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) var(--surface-2);
+}
+
+.survey-review-side > * {
+  flex-shrink: 0;
+}
+
+.survey-review-side::-webkit-scrollbar,
+.survey-review-body::-webkit-scrollbar,
+.survey-canvas-wrap::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.survey-review-side::-webkit-scrollbar-track,
+.survey-review-body::-webkit-scrollbar-track,
+.survey-canvas-wrap::-webkit-scrollbar-track {
+  background: var(--surface-2);
+  border-radius: 999px;
+}
+
+.survey-review-side::-webkit-scrollbar-thumb,
+.survey-review-body::-webkit-scrollbar-thumb,
+.survey-canvas-wrap::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 999px;
+  border: 2px solid var(--surface-2);
 }
 
 .survey-candidate-field {

@@ -6,7 +6,6 @@ import {
   type SurveyForm,
   type SurveyLogicalPage,
   type SurveyTemplate,
-  type SurveyTemplateGrid,
 } from '../lib/survey';
 import { renderSurveyReviewPage } from '../lib/surveyPdf';
 
@@ -40,6 +39,8 @@ export default function SurveyReviewModal({
   const [zoom, setZoom] = useState(false);
   const [candidate, setCandidate] = useState(form.candidateNo);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const sideRef = useRef<HTMLDivElement>(null);
+  const groupRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const viewerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -130,11 +131,38 @@ export default function SurveyReviewModal({
     void draw();
   }, [draw]);
 
-  const contentGrids = useMemo(() => {
-    const page = template.pages.find((item) => item.page === read?.templatePage);
-    if (!page) return [] as SurveyTemplateGrid[];
-    return page.grids.filter((grid) => !grid.isCandidate);
-  }, [read?.templatePage, template]);
+  // The right-hand editor lists every page's grids: the page tabs only switch
+  // the scan image, and the whole set stays scrollable in one place.
+  const contentGroups = useMemo(
+    () =>
+      template.pages.flatMap((page) => {
+        const content = page.grids.filter((grid) => !grid.isCandidate);
+        return content.map((grid, index) => ({
+          page: page.page,
+          grid,
+          index,
+          count: content.length,
+        }));
+      }),
+    [template],
+  );
+
+  const selectPage = (index: number) => {
+    setPageIndex(index);
+    const pageNo = form.pages[index]?.templatePage;
+    const side = sideRef.current;
+    const group = pageNo ? groupRefs.current[pageNo] : null;
+    if (!side || !group) return;
+    if (side.scrollHeight > side.clientHeight + 4) {
+      const top =
+        group.getBoundingClientRect().top -
+        side.getBoundingClientRect().top +
+        side.scrollTop;
+      side.scrollTo({ top, behavior: 'smooth' });
+    } else {
+      group.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }
+  };
 
   const applyCandidate = () => {
     const digits = candidate.replace(/\D/g, '').slice(0, 4);
@@ -233,7 +261,7 @@ export default function SurveyReviewModal({
                 <button
                   key={page.pageId}
                   className={index === pageIndex ? 'active' : ''}
-                  onClick={() => setPageIndex(index)}
+                  onClick={() => selectPage(index)}
                 >
                   第 {page.templatePage || index + 1} 頁
                 </button>
@@ -263,7 +291,7 @@ export default function SurveyReviewModal({
             </div>
           </div>
 
-          <div className="survey-review-side">
+          <div className="survey-review-side" ref={sideRef}>
             <label className="field survey-candidate-field">
               <span>考生號碼</span>
               <div className="survey-candidate-row">
@@ -284,11 +312,18 @@ export default function SurveyReviewModal({
               </div>
             </label>
 
-            {contentGrids.map((grid) => (
-              <div key={grid.id} className="survey-review-grid">
+            {contentGroups.map(({ page: pageNo, grid, index: groupIndex, count }) => (
+              <div
+                key={grid.id}
+                className="survey-review-grid"
+                ref={(el) => {
+                  if (groupIndex === 0) groupRefs.current[pageNo] = el;
+                }}
+              >
                 <div className="survey-review-grid-head">
                   <strong>{grid.mode === 'single' ? '應用學習課程' : '選修科排序'}</strong>
                   <span>
+                    第 {pageNo} 頁{count > 1 ? ` · 第 ${groupIndex + 1} 組` : ''} ·{' '}
                     {grid.rows.length} {grid.mode === 'single' ? '個課程' : `科 · 1–${grid.columns}`}
                   </span>
                 </div>
@@ -339,16 +374,14 @@ export default function SurveyReviewModal({
           <span className="survey-review-nav">
             <button
               className="btn ghost small"
-              onClick={() => setPageIndex((index) => Math.max(0, index - 1))}
+              onClick={() => selectPage(Math.max(0, pageIndex - 1))}
               disabled={pageIndex === 0}
             >
               <ChevronLeft size={14} /> 上一頁
             </button>
             <button
               className="btn ghost small"
-              onClick={() =>
-                setPageIndex((index) => Math.min(form.pages.length - 1, index + 1))
-              }
+              onClick={() => selectPage(Math.min(form.pages.length - 1, pageIndex + 1))}
               disabled={pageIndex >= form.pages.length - 1}
             >
               下一頁 <ChevronRight size={14} />
