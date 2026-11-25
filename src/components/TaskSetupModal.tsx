@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react';
 import { CalendarDays, ClipboardList, Plus, UploadCloud, X } from 'lucide-react';
 import { FORM_LEVELS, subjectGroups } from '../lib/subjects';
 import type { TaskKind } from '../types';
-
-export const SURVEY_SUBJECT = '中三選科表';
+import { SURVEY_SUBJECT } from '../lib/survey';
 
 interface TaskSetupModalProps {
   mode: 'new' | 'upload';

@@ -6296,3 +6296,7 @@ body:has(.modal-backdrop) .toast {
     width: 100%;
   }
 }
+
+.intro-survey-btn {
+  margin-top: 12px;
+}

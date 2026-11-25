@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ClipboardList } from 'lucide-react';
 import Header from './components/Header';
 import Uploader from './components/Uploader';
 import Results from './components/Results';
@@ -10,6 +11,7 @@ import Toast, { type ToastKind } from './components/Toast';
 import Footer from './components/Footer';
 import { analyseResults, getKeyAnswers, getSheetAnswers, suggestPassMark, suggestQuestionCountFromClass, MAX_QUESTIONS } from './lib/scoring';
 import { pdfToImages } from './lib/pdf';
+import { SURVEY_SUBJECT } from './lib/survey';
 import { buildLayoutGuide, needsLayoutGuide } from './lib/marker';
 import { clearSession, loadSession } from './lib/storage';
 import {
@@ -999,9 +1001,11 @@ export default function App() {
       // Replace an unused task instead of leaving an empty entry behind. A
       // survey task's form count lives on the task meta, not in `sheets`.
       const current = tasks.find((task) => task.id === activeTaskId);
+      // Never replace a survey task here: it may hold a template and scans
+      // even when no form has been assembled yet.
       const currentEmpty =
         current?.kind === 'survey'
-          ? (current.sheetCount ?? 0) === 0
+          ? false
           : sheets.length === 0 && !current?.title.trim();
       const replaceCurrent = Boolean(activeTaskId) && currentEmpty;
       if (replaceCurrent && activeTaskId) {
@@ -1052,6 +1056,20 @@ export default function App() {
     taskBusy,
     tasks,
   ]);
+
+  // Small shortcut on the answer-sheet landing page: jump straight to the
+  // survey page, reusing the most recent survey task or creating one.
+  const openSurveyTask = useCallback(() => {
+    if (processing || taskBusy || importProgress.active) return;
+    const latest = tasks
+      .filter((task) => task.kind === 'survey')
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    if (latest) {
+      void switchTask(latest.id);
+      return;
+    }
+    void createNewTask('S3', SURVEY_SUBJECT, 'survey');
+  }, [createNewTask, importProgress.active, processing, switchTask, taskBusy, tasks]);
 
   const requestNewTask = useCallback(() => {
     if (processing || taskBusy || importProgress.active) return;
@@ -1291,6 +1309,21 @@ export default function App() {
             <p className="intro-line">
               毋須安裝或登入；所有掃描頁分析及計分均於瀏覽器內完成，試卷影像及成績僅存於使用者裝置，不會上傳至任何伺服器。
             </p>
+            <button
+              className="btn ghost small intro-survey-btn"
+              onClick={openSurveyTask}
+              disabled={
+                !hydrated ||
+                processing ||
+                taskBusy ||
+                importProgress.active ||
+                Boolean(taskLoadError)
+              }
+              title="開啟中三選科表"
+            >
+              <ClipboardList size={14} />
+              中三選科表
+            </button>
           </div>
         )}
 

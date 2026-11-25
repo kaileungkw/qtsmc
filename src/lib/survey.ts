@@ -13,6 +13,9 @@
 
 export const SURVEY_BUBBLE_CHAR = '\uf081';
 
+/** Task subject used for the 中三選科表 task kind. */
+export const SURVEY_SUBJECT = '中三選科表';
+
 export interface SurveyTextItem {
   text: string;
   /** Horizontal position in PDF points. */
