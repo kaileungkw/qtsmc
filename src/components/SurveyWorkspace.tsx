@@ -11,6 +11,7 @@ import {
   UploadCloud,
 } from 'lucide-react';
 import type { TaskMeta } from '../types';
+import { surveyRoundLabel } from '../lib/academic';
 import type { RosterData } from '../lib/roster';
 import {
   analyseSurveyGrayPage,
@@ -22,7 +23,12 @@ import {
   type SurveyTemplate,
   type SurveyTemplateGrid,
 } from '../lib/survey';
-import { forEachSurveyPage, readSurveyTextPages } from '../lib/surveyPdf';
+import {
+  forEachSurveyPage,
+  isSurveyScanImage,
+  isSurveyScanPdf,
+  readSurveyTextPages,
+} from '../lib/surveyPdf';
 import { exportSurveyZip } from '../lib/surveyExport';
 import type { ToastKind } from './Toast';
 import SurveyReviewModal from './SurveyReviewModal';
@@ -73,6 +79,8 @@ export default function SurveyWorkspace({
   onBusy,
 }: SurveyWorkspaceProps) {
   const [template, setTemplate] = useState<SurveyTemplate | null>(null);
+  const [templateBusy, setTemplateBusy] = useState(false);
+  const [templateError, setTemplateError] = useState('');
   const [blankName, setBlankName] = useState('');
   const [blankPdf, setBlankPdf] = useState<Blob | null>(null);
   const [scans, setScans] = useState<{ name: string; blob: Blob }[]>([]);
@@ -97,6 +105,8 @@ export default function SurveyWorkspace({
       .then((saved) => {
         if (cancelled || !saved) return;
         setTemplate(saved.template ?? null);
+        setTemplateError('');
+        setTemplateBusy(false);
         setBlankName(saved.blankName ?? '');
         setBlankPdf(saved.blankPdf ?? null);
         setScans(saved.scans ?? []);
@@ -183,19 +193,27 @@ export default function SurveyWorkspace({
 
   const loadTemplate = useCallback(
     async (file: File) => {
-      if (!file.name.toLowerCase().endsWith('.pdf')) {
-        onToast('請上載空白表格的 PDF 檔案。', 'warning');
+      setTemplateError('');
+      if (!isSurveyScanPdf(file)) {
+        const message = '空白表格必須是學校原本的 PDF（有文字層）；掃描版或圖片沒有科目名稱。';
+        setTemplateError(message);
+        onToast(message, 'warning');
         return;
       }
+      setTemplateBusy(true);
       onBusy(true);
       try {
         const textPages = await readSurveyTextPages(file);
         const built = buildSurveyTemplateFromPages(file.name, textPages);
         if (!built.pages.some((page) => page.grids.some((grid) => !grid.isCandidate))) {
-          onToast('這個 PDF 找不到選科表格，請確認是空白表格原稿。', 'error');
+          const message =
+            '這個 PDF 找不到選科表格。請上載學校原本的空白表格 PDF，不要上載已填寫的掃描。';
+          setTemplateError(message);
+          onToast(message, 'error');
           return;
         }
         setTemplate(built);
+        setTemplateError('');
         setBlankName(file.name);
         setBlankPdf(file);
         setPages([]);
@@ -203,12 +221,16 @@ export default function SurveyWorkspace({
         onToast(
           `已讀取表格：${built.pages.length} 頁、${built.pages
             .flatMap((page) => page.grids.filter((grid) => !grid.isCandidate))
-            .length} 個選科表。`,
+            .length} 個選科部分。`,
           'success',
         );
       } catch {
-        onToast('未能讀取這個 PDF，請再試一次。', 'error');
+        const message =
+          '未能讀取這個 PDF。請確認它是學校原本的空白表格（Word 產生的 PDF），不是掃描影像。';
+        setTemplateError(message);
+        onToast(message, 'error');
       } finally {
+        setTemplateBusy(false);
         onBusy(false);
       }
     },
@@ -217,20 +239,26 @@ export default function SurveyWorkspace({
 
   const addScans = useCallback(
     (files: File[]) => {
-      const pdfs = files.filter((file) => file.name.toLowerCase().endsWith('.pdf'));
-      if (!pdfs.length) {
-        onToast('請上載掃描後的 PDF。', 'warning');
+      const valid = files.filter(
+        (file) => isSurveyScanPdf(file) || isSurveyScanImage(file),
+      );
+      if (!valid.length) {
+        onToast('請上載掃描後的 PDF 或 JPG／PNG 圖片。', 'warning');
         return;
       }
       setScans((prev) => [
         ...prev,
-        ...pdfs.map((file) => ({ name: file.name, blob: file as Blob })),
+        ...valid.map((file) => ({ name: file.name, blob: file as Blob })),
       ]);
       setPages([]);
       setForms([]);
-      onToast(`已加入 ${pdfs.length} 個掃描檔案，請按「開始辨識」。`, 'success');
+      if (!template) {
+        onToast('已加入掃描；請先上載空白表格 PDF（步驟 01）才可開始辨識。', 'warning');
+        return;
+      }
+      onToast(`已加入 ${valid.length} 個掃描檔案，請按「開始辨識」。`, 'success');
     },
-    [onToast],
+    [onToast, template],
   );
 
   const process = useCallback(async () => {
@@ -243,7 +271,7 @@ export default function SurveyWorkspace({
       for (let fileIndex = 0; fileIndex < scans.length; fileIndex++) {
         const scan = scans[fileIndex];
         setProgress({ done: fileIndex, total: scans.length, label: scan.name });
-        const file = new File([scan.blob], scan.name, { type: 'application/pdf' });
+        const file = new File([scan.blob], scan.name, { type: scan.blob.type || '' });
         await forEachSurveyPage(
           file,
           (page) => {
@@ -398,7 +426,7 @@ export default function SurveyWorkspace({
           blankName && blankPdf ? { name: blankName, blob: blankPdf } : undefined,
         date: task.date,
         formLevel: task.formLevel,
-        subject: task.subject,
+        subject: `${task.subject}（${surveyRoundLabel(task.date)}）`,
       });
       onToast('已下載選科表報告。', 'success');
     } catch {
@@ -429,7 +457,11 @@ export default function SurveyWorkspace({
           </div>
           <div className="panel-head-meta">
             {template ? (
-              <button className="btn ghost small" onClick={() => templateInput.current?.click()}>
+              <button
+                className="btn ghost small"
+                onClick={() => templateInput.current?.click()}
+                disabled={templateBusy}
+              >
                 更換表格
               </button>
             ) : null}
@@ -446,6 +478,17 @@ export default function SurveyWorkspace({
             />
           </div>
         </div>
+
+        {templateBusy && (
+          <div className="survey-template-busy">
+            <Loader2 size={16} className="spin" /> 正在讀取表格的科目名稱…
+          </div>
+        )}
+        {templateError && (
+          <p className="survey-template-error" role="alert">
+            <AlertTriangle size={15} /> {templateError}
+          </p>
+        )}
 
         {template ? (
           <div className="survey-template-summary">
@@ -485,10 +528,14 @@ export default function SurveyWorkspace({
             </div>
           </div>
         ) : (
-          <button className="survey-upload" onClick={() => templateInput.current?.click()}>
+          <button
+            className="survey-upload"
+            onClick={() => templateInput.current?.click()}
+            disabled={templateBusy}
+          >
             <UploadCloud size={22} />
-            <strong>上載空白表格 PDF</strong>
-            <span>學校產生的原稿，例如「2526 Subject_Preference_Survey1」</span>
+            <strong>{templateBusy ? '正在讀取表格…' : '上載空白表格 PDF'}</strong>
+            <span>學校產生的原稿（有文字層），例如「2526 Subject_Preference_Survey1」</span>
           </button>
         )}
       </section>
@@ -537,7 +584,7 @@ export default function SurveyWorkspace({
           <input
             ref={scanInput}
             type="file"
-            accept="application/pdf,.pdf"
+            accept="application/pdf,.pdf,image/jpeg,image/png,image/webp,image/bmp,.jpg,.jpeg,.png,.webp,.bmp"
             multiple
             hidden
             onChange={(event) => {
@@ -550,8 +597,8 @@ export default function SurveyWorkspace({
             {processing ? <Loader2 size={26} className="spin" /> : <ScanLine size={26} />}
           </div>
           <div className="dropzone-copy">
-            <strong>{processing ? '正在辨識…' : '拖放或點擊上載掃描 PDF'}</strong>
-            <span>A3 會自動分左右兩頁；已填寫的整班可直接上載。</span>
+            <strong>{processing ? '正在辨識…' : '拖放或點擊上載掃描 PDF／圖片'}</strong>
+            <span>A3 會自動分左右兩頁；PDF、JPG、PNG 均可，整班可直接上載。</span>
           </div>
           <span className="btn secondary small dropzone-btn">
             <UploadCloud size={15} /> 選擇檔案
@@ -569,6 +616,32 @@ export default function SurveyWorkspace({
           </ul>
         )}
 
+        <div className="survey-requirements" aria-live="polite">
+          <span className={template ? 'ok' : 'missing'}>
+            {template ? <Check size={13} /> : <AlertTriangle size={13} />}
+            空白表格：{template ? '已讀取' : '未上載'}
+            {!template && (
+              <button
+                type="button"
+                className="text-btn"
+                onClick={() => templateInput.current?.click()}
+                disabled={templateBusy}
+              >
+                上載
+              </button>
+            )}
+          </span>
+          <span className={scans.length ? 'ok' : 'missing'}>
+            {scans.length ? <Check size={13} /> : <AlertTriangle size={13} />}
+            掃描：{scans.length ? `${scans.length} 個檔案` : '未加入'}
+            {!scans.length && (
+              <button type="button" className="text-btn" onClick={() => scanInput.current?.click()}>
+                加入
+              </button>
+            )}
+          </span>
+        </div>
+
         <div className="survey-process-row">
           {processing ? (
             <span className="survey-progress">
@@ -582,14 +655,21 @@ export default function SurveyWorkspace({
                   ? roster
                     ? '辨識後會自動配對全校名單的姓名。'
                     : '全校名單未載入；姓名會留空，考生號碼仍會讀取。'
-                  : '請先加入掃描 PDF。'
-                : '請先上載空白表格。'}
+                  : '請先加入掃描（PDF 或 JPG／PNG）。'
+                : '請先上載學校原本的空白表格 PDF。'}
             </span>
           )}
           <button
             className="btn primary large"
             onClick={() => void process()}
             disabled={!template || !scans.length || processing}
+            title={
+              !template
+                ? '請先上載空白表格 PDF'
+                : !scans.length
+                  ? '請先加入掃描'
+                  : ''
+            }
           >
             {processing ? <Loader2 size={17} className="spin" /> : <ScanLine size={17} />}
             {processing ? '辨識中' : done ? '重新辨識' : '開始辨識'}

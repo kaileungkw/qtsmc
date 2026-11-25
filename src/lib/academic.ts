@@ -42,6 +42,20 @@ function dateParts(value: string | number | Date | undefined): {
 }
 
 /** School year starts in September; terms are Sep–Dec, Jan–Apr and May–Aug. */
+/** 中三選科表：12 月＝第一次，3–4 月＝第二次，6–7 月＝第三次。 */
+export function surveyRoundLabel(
+  value: string | number | Date | undefined,
+): '第一次' | '第二次' | '第三次' {
+  const { month } = dateParts(value);
+  if (month === 12) return '第一次';
+  if (month >= 3 && month <= 4) return '第二次';
+  if (month >= 6 && month <= 7) return '第三次';
+  // Fall back to the school term for dates just outside the survey windows
+  // (e.g. a task created in November for the December survey).
+  const term = academicPeriod(value).term;
+  return term === 'T1' ? '第一次' : term === 'T2' ? '第二次' : '第三次';
+}
+
 export function academicPeriod(value: string | number | Date | undefined): AcademicPeriod {
   const { year, month } = dateParts(value);
   const startYear = month >= 9 ? year : year - 1;

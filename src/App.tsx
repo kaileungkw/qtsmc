@@ -1034,7 +1034,9 @@ export default function App() {
       );
       setActiveTaskId(meta.id);
       showToast(
-        kind === 'survey' ? '已建立選科表任務；請上載空白表格及掃描。' : '已建立新任務；請上載答題紙。',
+        kind === 'survey'
+          ? '已建立選科表任務；請先上載空白 PDF 原檔，再上載掃描版本。'
+          : '已建立新任務；請上載答題紙。',
         'success',
       );
     } finally {

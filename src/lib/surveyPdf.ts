@@ -13,6 +13,21 @@ import type { SurveyGrayImage, SurveyTextPage } from './survey';
 const PORTRAIT_WIDTH = 1500;
 const LANDSCAPE_WIDTH = 3000;
 
+const PDF_NAME = /\.pdf$/i;
+const IMAGE_NAME = /\.(jpe?g|png|webp|bmp)$/i;
+
+export function isSurveyScanPdf(file: { name: string; type?: string }): boolean {
+  if (PDF_NAME.test(file.name)) return true;
+  if (IMAGE_NAME.test(file.name)) return false;
+  return file.type === 'application/pdf';
+}
+
+export function isSurveyScanImage(file: { name: string; type?: string }): boolean {
+  if (IMAGE_NAME.test(file.name)) return true;
+  if (PDF_NAME.test(file.name)) return false;
+  return Boolean(file.type?.startsWith('image/'));
+}
+
 export interface SurveyRenderedPage {
   pageNo: number;
   half: 'full' | 'left' | 'right';
@@ -44,6 +59,63 @@ function splitCanvas(canvas: HTMLCanvasElement, side: 'left' | 'right'): HTMLCan
   if (!ctx) throw new Error('瀏覽器不支援 Canvas。');
   ctx.drawImage(canvas, x, 0, width, canvas.height, 0, 0, width, canvas.height);
   return out;
+}
+
+async function imageToCanvas(file: Blob): Promise<HTMLCanvasElement> {
+  const bitmap = await createImageBitmap(file);
+  try {
+    const landscape = bitmap.width > bitmap.height * 1.25;
+    const target = landscape ? LANDSCAPE_WIDTH : PORTRAIT_WIDTH;
+    const scale = Math.min(3, Math.max(0.05, target / bitmap.width));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('瀏覽器不支援 Canvas。');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    return canvas;
+  } finally {
+    bitmap.close();
+  }
+}
+
+/** Deskew each A4 page of a rendered A3 sheet (or the whole A4 sheet). */
+async function emitCanvasPages(
+  canvas: HTMLCanvasElement,
+  pageNo: number,
+  onPage: (page: SurveyRenderedPage) => Promise<void> | void,
+): Promise<void> {
+  const landscape = canvas.width > canvas.height * 1.25;
+  if (landscape) {
+    for (const side of ['left', 'right'] as const) {
+      const halfCanvas = splitCanvas(canvas, side);
+      const skew = estimateSkew(halfCanvas);
+      const upright = skew ? rotateCanvas(halfCanvas, skew) : halfCanvas;
+      const gray = grayFromCanvas(upright);
+      await onPage({
+        pageNo,
+        half: side,
+        width: gray.width,
+        height: gray.height,
+        blank: inkFraction(gray) < 0.002,
+        gray,
+      });
+    }
+  } else {
+    const skew = estimateSkew(canvas);
+    const upright = skew ? rotateCanvas(canvas, skew) : canvas;
+    const gray = grayFromCanvas(upright);
+    await onPage({
+      pageNo,
+      half: 'full',
+      width: gray.width,
+      height: gray.height,
+      blank: inkFraction(gray) < 0.002,
+      gray,
+    });
+  }
 }
 
 function inkFraction(gray: SurveyGrayImage): number {
@@ -82,6 +154,15 @@ export async function forEachSurveyPage(
   onPage: (page: SurveyRenderedPage) => Promise<void> | void,
   onProgress?: (done: number, total: number) => void,
 ): Promise<void> {
+  if (!isSurveyScanPdf(file)) {
+    if (!isSurveyScanImage(file)) {
+      throw new Error('請上載 PDF 或 JPG／PNG 掃描。');
+    }
+    const canvas = await imageToCanvas(file);
+    await emitCanvasPages(canvas, 1, onPage);
+    onProgress?.(1, 1);
+    return;
+  }
   const pdf = await openPdf(file);
   try {
     for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
@@ -92,34 +173,7 @@ export async function forEachSurveyPage(
         page,
         landscape ? LANDSCAPE_WIDTH : PORTRAIT_WIDTH,
       );
-      if (landscape) {
-        for (const side of ['left', 'right'] as const) {
-          const halfCanvas = splitCanvas(canvas, side);
-          const skew = estimateSkew(halfCanvas);
-          const upright = skew ? rotateCanvas(halfCanvas, skew) : halfCanvas;
-          const gray = grayFromCanvas(upright);
-          await onPage({
-            pageNo,
-            half: side,
-            width: gray.width,
-            height: gray.height,
-            blank: inkFraction(gray) < 0.002,
-            gray,
-          });
-        }
-      } else {
-        const skew = estimateSkew(canvas);
-        const upright = skew ? rotateCanvas(canvas, skew) : canvas;
-        const gray = grayFromCanvas(upright);
-        await onPage({
-          pageNo,
-          half: 'full',
-          width: gray.width,
-          height: gray.height,
-          blank: inkFraction(gray) < 0.002,
-          gray,
-        });
-      }
+      await emitCanvasPages(canvas, pageNo, onPage);
       page.cleanup();
       onProgress?.(pageNo, pdf.numPages);
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -170,6 +224,13 @@ export async function renderSurveyReviewPage(
   pageNo: number,
   half: 'full' | 'left' | 'right',
 ): Promise<HTMLCanvasElement> {
+  if (!isSurveyScanPdf(file)) {
+    const canvas = await imageToCanvas(file);
+    const landscape = canvas.width > canvas.height * 1.25;
+    const part = landscape ? splitCanvas(canvas, half === 'right' ? 'right' : 'left') : canvas;
+    const skew = estimateSkew(part);
+    return skew ? rotateCanvas(part, skew) : part;
+  }
   const pdf = await openPdf(file);
   try {
     const page = await pdf.getPage(pageNo);

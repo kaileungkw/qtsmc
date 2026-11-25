@@ -59,7 +59,7 @@ export default function SurveyReviewModal({
     }
     setLoading(true);
     try {
-      const file = new File([scan.blob], scan.name, { type: 'application/pdf' });
+      const file = new File([scan.blob], scan.name, { type: scan.blob.type || '' });
       const image = await renderSurveyReviewPage(file, pageRef.pageNo, pageRef.half);
       const canvas = canvasRef.current;
       const ctx = canvas?.getContext('2d');

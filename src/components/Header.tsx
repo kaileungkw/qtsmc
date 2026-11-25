@@ -1,6 +1,6 @@
 import { Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import type { TaskMeta } from '../types';
-import { academicPeriod } from '../lib/academic';
+import { academicPeriod, surveyRoundLabel } from '../lib/academic';
 
 interface HeaderProps {
   tasks: TaskMeta[];
@@ -14,7 +14,14 @@ interface HeaderProps {
 function taskLabel(task: TaskMeta, index: number): string {
   const prefix = academicPeriod(task.date || task.createdAt).prefix;
   const parts = [task.formLevel.trim(), task.subject.trim()].filter(Boolean);
-  if (parts.length) return [prefix, ...parts].join('_');
+  if (parts.length) {
+    if (task.kind === 'survey') {
+      parts[parts.length - 1] = `${parts[parts.length - 1]}（${surveyRoundLabel(
+        task.date || task.createdAt,
+      )}）`;
+    }
+    return [prefix, ...parts].join('_');
+  }
   const title = task.title.trim();
   return `${prefix}_${title || `任務 ${index + 1}`}`;
 }

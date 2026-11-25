@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CalendarDays, ClipboardList, Plus, ScanLine, UploadCloud, X } from 'lucide-react';
+import { CalendarDays, ClipboardList, Plus, UploadCloud, X } from 'lucide-react';
 import { FORM_LEVELS, subjectGroups } from '../lib/subjects';
 import type { TaskKind } from '../types';
 
@@ -20,12 +20,10 @@ export default function TaskSetupModal({
   onCancel,
   onConfirm,
 }: TaskSetupModalProps) {
-  const surveyHint = initialSubject.includes('選科表');
-  const [kind, setKind] = useState<TaskKind>(surveyHint ? 'survey' : 'mcq');
-  const [formLevel, setFormLevel] = useState(
-    surveyHint ? initialFormLevel || 'S3' : initialFormLevel,
+  const [formLevel, setFormLevel] = useState(initialFormLevel);
+  const [subject, setSubject] = useState(
+    initialSubject.includes('選科表') ? '' : initialSubject,
   );
-  const [subject, setSubject] = useState(surveyHint ? '' : initialSubject);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -38,17 +36,12 @@ export default function TaskSetupModal({
   const groups = subjectGroups(formLevel);
   const subjects = groups.flatMap((group) => group.subjects);
   const keepCurrent = Boolean(subject) && !subjects.includes(subject);
-  const ready = Boolean(formLevel && (kind === 'survey' || subject));
+  const ready = Boolean(formLevel && subject);
 
   const changeFormLevel = (value: string) => {
     setFormLevel(value);
     const nextSubjects = subjectGroups(value).flatMap((group) => group.subjects);
     if (subject && !nextSubjects.includes(subject)) setSubject('');
-  };
-
-  const confirm = () => {
-    if (!ready) return;
-    onConfirm(formLevel, kind === 'survey' ? SURVEY_SUBJECT : subject, kind);
   };
 
   return (
@@ -73,42 +66,10 @@ export default function TaskSetupModal({
 
         <div className="setup-body">
           <p className="setup-lead">
-            {kind === 'survey'
-              ? '上載空白表格及已填寫的掃描，辨識每名學生的選科排序。'
-              : mode === 'new'
-                ? '選擇年級及科目，之後上載的答題紙會存入這個任務。'
-                : '設定好年級及科目，才會開始處理你揀選的檔案。'}
+            {mode === 'new'
+              ? '選擇年級及科目，之後上載的答題紙會存入這個任務。'
+              : '設定好年級及科目，才會開始處理你揀選的檔案。'}
           </p>
-
-          {mode === 'new' && (
-          <div className="task-kind-grid" role="radiogroup" aria-label="任務類型">
-            <button
-              type="button"
-              className={`task-kind-card ${kind === 'mcq' ? 'active' : ''}`}
-              onClick={() => setKind('mcq')}
-              role="radio"
-              aria-checked={kind === 'mcq'}
-            >
-              <ScanLine size={20} />
-              <strong>答題紙批改</strong>
-              <span>選擇題答題紙，自動計分及統計</span>
-            </button>
-            <button
-              type="button"
-              className={`task-kind-card ${kind === 'survey' ? 'active' : ''}`}
-              onClick={() => {
-                setKind('survey');
-                setFormLevel('S3');
-              }}
-              role="radio"
-              aria-checked={kind === 'survey'}
-            >
-              <ClipboardList size={20} />
-              <strong>中三選科表</strong>
-              <span>選科意願調查，讀取科目排序</span>
-            </button>
-          </div>
-          )}
 
           <div className="setup-grid">
             <label className="field">
@@ -116,7 +77,7 @@ export default function TaskSetupModal({
               <select
                 value={formLevel}
                 onChange={(event) => changeFormLevel(event.target.value)}
-                autoFocus={kind === 'mcq'}
+                autoFocus
               >
                 <option value="">請選擇</option>
                 {FORM_LEVELS.map((level) => (
@@ -127,45 +88,62 @@ export default function TaskSetupModal({
               </select>
             </label>
 
-            {kind === 'mcq' && (
-              <label className="field">
-                <span>科目</span>
-                <select
-                  value={subject}
-                  onChange={(event) => setSubject(event.target.value)}
-                  disabled={!formLevel}
-                >
-                  <option value="">{formLevel ? '請選擇' : '請先選年級'}</option>
-                  {keepCurrent && <option value={subject}>{subject}</option>}
-                  {groups.map((group) => (
-                    <optgroup key={group.label} label={group.label}>
-                      {group.subjects.map((item) => (
-                        <option key={`${group.label}-${item}`} value={item}>
-                          {item}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-              </label>
-            )}
+            <label className="field">
+              <span>科目</span>
+              <select
+                value={subject}
+                onChange={(event) => setSubject(event.target.value)}
+                disabled={!formLevel}
+              >
+                <option value="">{formLevel ? '請選擇' : '請先選年級'}</option>
+                {keepCurrent && <option value={subject}>{subject}</option>}
+                {groups.map((group) => (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.subjects.map((item) => (
+                      <option key={`${group.label}-${item}`} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </label>
           </div>
 
           <p className="setup-note">
-            {kind === 'survey'
-              ? '選科表任務會分開儲存；不會計分，也不會影響答題紙任務。'
-              : '及格線會按年級自動設定：S1–S3 為 50%，S4–S6 為 40%。之後可在匯出頁更改。'}
+            及格線會按年級自動設定：S1–S3 為 50%，S4–S6 為 40%。之後可在匯出頁更改。
           </p>
+          {mode === 'new' && (
+            <p className="setup-note survey-setup-note">
+              中三選科表：建立後<strong>先上載學校原本的空白表格 PDF</strong>，再上載掃描版本。
+            </p>
+          )}
         </div>
 
         <div className="setup-actions">
-          <button className="btn ghost" onClick={onCancel}>
-            取消
-          </button>
-          <button className="btn primary" onClick={confirm} disabled={!ready}>
-            {mode === 'new' ? <Plus size={15} /> : <UploadCloud size={15} />}
-            {mode === 'new' ? '建立任務' : '繼續上載'}
-          </button>
+          {mode === 'new' && (
+            <button
+              className="btn ghost survey-create-btn"
+              onClick={() => onConfirm('S3', SURVEY_SUBJECT, 'survey')}
+              title="中三選科表：先上載空白 PDF 原檔，再上載掃描版本"
+            >
+              <ClipboardList size={15} />
+              中三選科表
+            </button>
+          )}
+          <div className="setup-actions-right">
+            <button className="btn ghost" onClick={onCancel}>
+              取消
+            </button>
+            <button
+              className="btn primary"
+              onClick={() => onConfirm(formLevel, subject, 'mcq')}
+              disabled={!ready}
+            >
+              {mode === 'new' ? <Plus size={15} /> : <UploadCloud size={15} />}
+              {mode === 'new' ? '建立任務' : '繼續上載'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
