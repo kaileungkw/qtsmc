@@ -35,6 +35,18 @@ export interface HeaderInfo {
   confidence: number;
 }
 
+/**
+ * Where the three answer blocks sit on the sheets of one batch, measured from
+ * the sheets that show the normal layout (see buildLayoutGuide).
+ */
+export interface LayoutGuide {
+  /** One box per answer block, in pixels measured from the page centre. */
+  frames: Frame[];
+  rotation: 0 | 90 | 180 | 270;
+  /** Sheets that were measured to build it. */
+  pages: number;
+}
+
 export interface Detection {
   ok: boolean;
   width: number;
@@ -44,6 +56,11 @@ export interface Detection {
   rows: DetectedRow[];
   warnings: string[];
   header?: HeaderInfo;
+  /**
+   * The sheet's own frame detection found a block twice or not at all, and the
+   * blocks were placed from the other sheets of the batch. Needs review.
+   */
+  realigned?: boolean;
   elapsedMs: number;
 }
 
@@ -162,6 +179,8 @@ export interface StudentResult {
   needsReview: boolean;
   /** The teacher pressed 完成覆核 for this sheet. */
   reviewed: boolean;
+  /** The answer blocks were placed from the other sheets of the batch. */
+  realigned: boolean;
   suggested?: SuggestedFields;
 }
 

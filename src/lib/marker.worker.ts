@@ -1,11 +1,14 @@
 /// <reference lib="webworker" />
 import { analyseWithRotation, enhanceGray, rgbaToGray } from './marker';
+import type { LayoutGuide } from '../types';
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
 
 interface Job {
   id: string;
   blob: Blob;
+  /** Block positions shared by the sheets already read in this batch. */
+  guide?: LayoutGuide;
 }
 
 async function loadBitmap(blob: Blob): Promise<ImageBitmap> {
@@ -17,7 +20,7 @@ async function loadBitmap(blob: Blob): Promise<ImageBitmap> {
 }
 
 scope.onmessage = async (event: MessageEvent<Job>) => {
-  const { id, blob } = event.data;
+  const { id, blob, guide } = event.data;
   try {
     const bitmap = await loadBitmap(blob);
     const targetWidth = 1500;
@@ -36,7 +39,7 @@ scope.onmessage = async (event: MessageEvent<Job>) => {
     const imageData = ctx.getImageData(0, 0, width, height);
     const gray = rgbaToGray(imageData.data, width, height);
     const enhanced = enhanceGray(gray, width, height);
-    const detection = analyseWithRotation(enhanced, width, height, gray);
+    const detection = analyseWithRotation(enhanced, width, height, gray, guide);
     bitmap.close();
     scope.postMessage({ id, detection });
   } catch (error) {

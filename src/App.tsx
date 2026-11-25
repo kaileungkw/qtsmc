@@ -9,6 +9,7 @@ import Toast, { type ToastKind } from './components/Toast';
 import Footer from './components/Footer';
 import { analyseResults, getKeyAnswers, getSheetAnswers, suggestPassMark, suggestQuestionCountFromClass, MAX_QUESTIONS } from './lib/scoring';
 import { pdfToImages } from './lib/pdf';
+import { buildLayoutGuide, needsLayoutGuide } from './lib/marker';
 import { clearSession, loadSession } from './lib/storage';
 import {
   createTaskMeta,
@@ -26,6 +27,7 @@ import type {
   AnswerOverrides,
   AnswerValue,
   Detection,
+  LayoutGuide,
   RuntimeSheet,
   SavedSession,
   Settings,
@@ -70,7 +72,11 @@ function baseName(fileName: string): string {
   return fileName.replace(/\.[^.]+$/, '');
 }
 
-function runWorkerJob(worker: Worker, blob: Blob): Promise<Detection> {
+function runWorkerJob(
+  worker: Worker,
+  blob: Blob,
+  guide?: LayoutGuide,
+): Promise<Detection> {
   return new Promise((resolve, reject) => {
     const id = uid();
     const timeout = window.setTimeout(() => {
@@ -86,7 +92,7 @@ function runWorkerJob(worker: Worker, blob: Blob): Promise<Detection> {
       else reject(new Error('辨識失敗。'));
     };
     worker.addEventListener('message', handler);
-    worker.postMessage({ id, blob });
+    worker.postMessage({ id, blob, guide });
   });
 }
 
@@ -657,9 +663,9 @@ export default function App() {
       setProcessing(false);
       return;
     }
-    for (let i = 0; i < updated.length; i++) {
-      const sheet = updated[i];
-      setProgress({ done: i, total: updated.length, current: sheet.fileName });
+    // Reads one sheet and stores the result. `updated` is replaced on every
+    // change, so the helper always works on the latest array.
+    const detect = async (sheet: RuntimeSheet, guide?: LayoutGuide) => {
       updated = updated.map((s) =>
         s.id === sheet.id
           ? { ...s, status: 'processing', error: undefined, reviewed: false }
@@ -667,7 +673,7 @@ export default function App() {
       );
       setSheets(updated);
       try {
-        const detection = await runWorkerJob(worker, sheet.blob);
+        const detection = await runWorkerJob(worker, sheet.blob, guide);
         const patch = detection.ok ? headerPatch(sheet, detection) : {};
         const header = detection.ok ? detection.header : undefined;
         updated = updated.map((s) =>
@@ -698,6 +704,24 @@ export default function App() {
         );
       }
       setSheets(updated);
+    };
+    for (let i = 0; i < updated.length; i++) {
+      setProgress({ done: i, total: updated.length, current: updated[i].fileName });
+      await detect(updated[i]);
+    }
+    // A sheet whose own frame detection found a block twice, or not at all, is
+    // read again with the block positions the other sheets of the batch share.
+    const guide = buildLayoutGuide(
+      updated.map((s) => s.detection).filter((d): d is Detection => Boolean(d)),
+    );
+    if (guide) {
+      const retry = updated.filter(
+        (s) => s.detection && needsLayoutGuide(s.detection, guide),
+      );
+      for (let i = 0; i < retry.length; i++) {
+        setProgress({ done: i, total: retry.length, current: retry[i].fileName });
+        await detect(retry[i], guide);
+      }
     }
     worker.terminate();
     if (roster) {

@@ -102,7 +102,7 @@ export default function ScoreTable({
       id: 'review',
       label: '需覆核',
       count: counts.review,
-      title: '包括存疑、多選及未填；完成覆核後會移出',
+      title: '包括存疑、多選、未填及已重新對位；完成覆核後會移出',
     },
     {
       id: 'reviewed',

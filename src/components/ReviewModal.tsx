@@ -377,6 +377,15 @@ export default function ReviewModal({
                   </button>
                 </div>
               )}
+              {detection.realigned && (
+                <div className="key-edit-banner" role="status">
+                  <AlertTriangle size={15} />
+                  <div>
+                    <strong>已重新對位</strong>
+                    <span>此頁的答題欄位置依據同批其他答題紙重新對位，請核對作答。</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="answers-head">

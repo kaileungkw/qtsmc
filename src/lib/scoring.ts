@@ -291,8 +291,16 @@ export function analyseResults(
     // Same rule as the score table: a sheet the teacher marked 覆核完成
     // is no longer a review candidate (export 備註 follows this too).
     const reviewed = !sheet.isKey && Boolean(sheet.reviewed);
+    const realigned = Boolean(sheet.detection.realigned);
     const needsReview =
-      !reviewed && flagsNeedReview({ isKey: sheet.isKey, lowCount, multiCount, blankCount });
+      !reviewed &&
+      flagsNeedReview({
+        isKey: sheet.isKey,
+        lowCount,
+        multiCount,
+        blankCount,
+        realigned,
+      });
     students.push({
       id: sheet.id,
       name: sheet.name,
@@ -313,6 +321,7 @@ export function analyseResults(
       multiChoices,
       reviewed,
       needsReview,
+      realigned,
       suggested: sheet.suggested,
     });
   }

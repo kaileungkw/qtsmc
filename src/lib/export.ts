@@ -102,6 +102,8 @@ function exportNote(student: {
   isKey: boolean;
   needsReview: boolean;
   reviewed?: boolean;
+  /** Answer blocks were placed from the other sheets of the batch. */
+  realigned?: boolean;
   suggested?: { className?: boolean; seatNo?: boolean; name?: boolean };
 }): string {
   const notes: string[] = [];
@@ -109,6 +111,7 @@ function exportNote(student: {
   // Same wording as the score-table status: a reviewed sheet is no longer 需覆核.
   else if (student.reviewed) notes.push('覆核完成');
   else if (student.needsReview) notes.push('需覆核');
+  if (student.realigned) notes.push('重新對位');
   const suggested = student.suggested;
   const suggestedFields: string[] = [];
   if (suggested?.className) suggestedFields.push('班別');

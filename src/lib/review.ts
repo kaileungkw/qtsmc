@@ -35,16 +35,24 @@ export function isNamelessStudent(student: StudentResult): boolean {
   return !student.isKey && !student.name.trim();
 }
 
-/** Detection flags (存疑／多選／未填) that make a student a review candidate. */
+/**
+ * What makes a student a review candidate: the detection flags (存疑／多選／
+ * 未填), or a sheet whose answer blocks were placed from the other sheets of
+ * the batch because its own frames were wrong.
+ */
 export function flagsNeedReview(student: {
   isKey: boolean;
   lowCount: number;
   multiCount: number;
   blankCount: number;
+  realigned?: boolean;
 }): boolean {
   return (
     !student.isKey &&
-    (student.lowCount > 0 || student.multiCount > 0 || student.blankCount > 0)
+    (student.lowCount > 0 ||
+      student.multiCount > 0 ||
+      student.blankCount > 0 ||
+      Boolean(student.realigned))
   );
 }
 

@@ -5,6 +5,7 @@ import type {
   Detection,
   Frame,
   HeaderInfo,
+  LayoutGuide,
 } from '../types';
 
 /**
@@ -174,6 +175,39 @@ export function collectVerticalSegments(
   return segs;
 }
 
+/**
+ * Fold the orphan runs of a printed line back into it. Segments arrive column
+ * by column, so a border that wobbles across one pixel column comes as several
+ * runs: the first starts the line, while a later one that was then more than
+ * 6 px beyond the line's end starts a line of its own and never merges,
+ * because every following column matches the first line instead. Once every
+ * column has been seen, such a run lies within the extent of the line it
+ * belongs to. Left alone it is long enough to pass for a second frame border,
+ * and the same answer block is then found twice.
+ */
+function foldLineFragments(lines: Line[]): void {
+  for (let pass = 0; pass < 4; pass++) {
+    let merged = false;
+    for (let i = 0; i < lines.length; i++) {
+      for (let j = lines.length - 1; j > i; j--) {
+        const line = lines[i];
+        const other = lines[j];
+        if (Math.max(line.x0, other.x0) - Math.min(line.x1, other.x1) > 3) continue;
+        const overlap = Math.min(line.y1, other.y1) - Math.max(line.y0, other.y0);
+        const shorter = Math.min(line.y1 - line.y0, other.y1 - other.y0);
+        if (overlap <= 0.5 * shorter) continue;
+        line.x0 = Math.min(line.x0, other.x0);
+        line.x1 = Math.max(line.x1, other.x1);
+        line.y0 = Math.min(line.y0, other.y0);
+        line.y1 = Math.max(line.y1, other.y1);
+        lines.splice(j, 1);
+        merged = true;
+      }
+    }
+    if (!merged) return;
+  }
+}
+
 export function mergeSegments(segs: Segment[]): Line[] {
   const lines: Line[] = [];
   for (const seg of segs) {
@@ -207,6 +241,7 @@ export function mergeSegments(segs: Segment[]): Line[] {
       });
     }
   }
+  foldLineFragments(lines);
   for (const line of lines) {
     line.xc = (line.x0 + line.x1) / 2;
     line.len = line.y1 - line.y0;
@@ -260,14 +295,39 @@ export function findAnswerFrames(
     used.add(pair.b);
     chosen.push(pair);
   }
-  const frames = chosen
+  const found = chosen
     .map((p) => ({
-      x: Math.round(p.a.xc),
-      y: Math.round(p.y0),
-      w: Math.round(p.b.xc - p.a.xc),
-      h: Math.round(p.h),
+      frame: {
+        x: Math.round(p.a.xc),
+        y: Math.round(p.y0),
+        w: Math.round(p.b.xc - p.a.xc),
+        h: Math.round(p.h),
+      },
+      // Length of the shorter border: how much of the block this pair really saw.
+      support: Math.min(p.a.len, p.b.len),
     }))
-    .filter((f) => f.w > 0 && f.h > 0)
+    .filter((f) => f.frame.w > 0 && f.frame.h > 0)
+    .sort((a, b) => a.frame.x - b.frame.x);
+
+  // One border that was seen as two lines a pixel or two apart describes the
+  // same block twice. Answer blocks sit side by side and never overlap, so
+  // keep a single frame per place: the one whose borders are more complete.
+  const distinct: { frame: Frame; support: number }[] = [];
+  for (const entry of found) {
+    const f = entry.frame;
+    const twin = distinct.findIndex((d) => {
+      const g = d.frame;
+      const sharedX = Math.min(f.x + f.w, g.x + g.w) - Math.max(f.x, g.x);
+      const sharedY = Math.min(f.y + f.h, g.y + g.h) - Math.max(f.y, g.y);
+      return (
+        sharedX > 0.5 * Math.min(f.w, g.w) && sharedY > 0.5 * Math.min(f.h, g.h)
+      );
+    });
+    if (twin < 0) distinct.push(entry);
+    else if (entry.support > distinct[twin].support) distinct[twin] = entry;
+  }
+  const frames = distinct
+    .map((d) => d.frame)
     .sort((a, b) => a.x - b.x);
 
   if (frames.length <= 3) return frames;
@@ -480,20 +540,24 @@ function decide(scores: Record<'A' | 'B' | 'C' | 'D', number>): {
  * bubble outlines give a strong periodic signal; choosing one offset for the
  * whole frame prevents the lower rows of the third block from drifting onto
  * their bottom outline on a slightly rotated page.
+ *
+ * The search must stay well inside half a row or column pitch: further out the
+ * neighbouring bubbles score as well as the right ones.
  */
 function findFrameGridOffset(
   gray: Uint8Array,
   width: number,
   height: number,
   frame: Frame,
+  reach = { dx: 4, dy: 6 },
 ): { dx: number; dy: number } {
   const bw = BUBBLE_W_FRAC * frame.w;
   const bh = BUBBLE_H_FRAC * frame.h;
   const hw = Math.max(6, Math.round(bw / 2));
   const hh = Math.max(4, Math.round(bh / 2));
   let best = { score: Infinity, dx: 0, dy: 0 };
-  for (let dy = -6; dy <= 6; dy++) {
-    for (let dx = -4; dx <= 4; dx++) {
+  for (let dy = -reach.dy; dy <= reach.dy; dy++) {
+    for (let dx = -reach.dx; dx <= reach.dx; dx++) {
       let sum = 0;
       let count = 0;
       for (let r = 0; r < ROWS_PER_BLOCK; r++) {
@@ -854,6 +918,286 @@ export function readHeaderFields(
   };
 }
 
+/** Shown on a sheet whose blocks were placed from the rest of the batch. */
+export const REALIGN_NOTE =
+  '答題欄位置已依據同批其他答題紙重新對位，請覆核作答。';
+
+/** The three answer blocks as printed: side by side, evenly spaced, one size. */
+export function hasBlockLayout(frames: Frame[]): boolean {
+  if (frames.length !== 3) return false;
+  const [a, b, c] = frames;
+  const gapA = b.x - a.x;
+  const gapB = c.x - b.x;
+  if (gapA <= 0 || gapB <= 0) return false;
+  if (Math.abs(gapA - gapB) > 0.04 * Math.max(gapA, gapB)) return false;
+  if (Math.max(a.w, b.w, c.w) - Math.min(a.w, b.w, c.w) > 0.08 * Math.max(a.w, b.w, c.w)) {
+    return false;
+  }
+  if (Math.max(a.h, b.h, c.h) - Math.min(a.h, b.h, c.h) > 0.06 * Math.max(a.h, b.h, c.h)) {
+    return false;
+  }
+  return Math.max(a.y, b.y, c.y) - Math.min(a.y, b.y, c.y) <= 0.03 * a.h;
+}
+
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+/** The blocks of one sheet of a batch, in its own pixel coordinates. */
+function guideOnPage(guide: LayoutGuide, width: number, height: number): Frame[] {
+  return guide.frames.map((f) => ({
+    x: f.x + width / 2,
+    y: f.y + height / 2,
+    w: f.w,
+    h: f.h,
+  }));
+}
+
+/**
+ * Where the three answer blocks sit on the sheets of one batch. Sheets scanned
+ * together share the layout to within a few pixels, so it shows a sheet whose
+ * own frame detection went wrong (a block found twice, or not at all) where its
+ * blocks really are. Built only from sheets that show the normal layout, so a
+ * faulty sheet never contributes.
+ */
+export function buildLayoutGuide(detections: Detection[]): LayoutGuide | undefined {
+  const measured = detections.filter((d) => d.ok && hasBlockLayout(d.frames));
+  if (measured.length < 3) return undefined;
+  const byRotation = new Map<number, Detection[]>();
+  for (const detection of measured) {
+    const list = byRotation.get(detection.rotation);
+    if (list) list.push(detection);
+    else byRotation.set(detection.rotation, [detection]);
+  }
+  const group = [...byRotation.values()].sort((a, b) => b.length - a.length)[0];
+  // Only pages of the same shape can share block positions.
+  const shapes = group.map((d) => d.height / d.width).sort((a, b) => a - b);
+  const shape = shapes[Math.floor(shapes.length / 2)];
+  const same = group.filter((d) => Math.abs(d.height / d.width - shape) <= 0.02 * shape);
+  if (same.length < 3) return undefined;
+  const boxes = same.map((d) =>
+    d.frames.map((f) => ({ x: f.x - d.width / 2, y: f.y - d.height / 2, w: f.w, h: f.h })),
+  );
+  const frames = [0, 1, 2].map(
+    (slot): Frame => ({
+      x: median(boxes.map((b) => b[slot].x)),
+      y: median(boxes.map((b) => b[slot].y)),
+      w: median(boxes.map((b) => b[slot].w)),
+      h: median(boxes.map((b) => b[slot].h)),
+    }),
+  );
+  return { frames, rotation: group[0].rotation, pages: same.length };
+}
+
+/** A sheet already shows all three blocks where the other sheets have them. */
+export function needsLayoutGuide(detection: Detection, guide: LayoutGuide): boolean {
+  if (detection.ok && detection.rotation !== guide.rotation) return false;
+  return !(detection.ok && hasBlockLayout(detection.frames));
+}
+
+function linearFit(points: [number, number][]): { a: number; b: number } | undefined {
+  const n = points.length;
+  let su = 0;
+  let sv = 0;
+  let suu = 0;
+  let suv = 0;
+  for (const [u, v] of points) {
+    su += u;
+    sv += v;
+    suu += u * u;
+    suv += u * v;
+  }
+  const denom = n * suu - su * su;
+  if (n < 2 || Math.abs(denom) < 1e-9) return undefined;
+  const b = (n * suv - su * sv) / denom;
+  return { a: (sv - b * su) / n, b };
+}
+
+/**
+ * Move a predicted block onto the printed grid of this sheet. The batch layout
+ * only says roughly where a block is, and the sheets of a batch differ
+ * slightly in print scale, so after one translation the bubble rows and
+ * columns are measured one by one and the frame is fitted to them. Every
+ * search stays well inside half a row or column pitch, where a neighbouring
+ * bubble cannot be taken for the right one. Returns undefined when the
+ * bubbles do not line up on one regular grid.
+ */
+function fitFrameToGrid(
+  gray: Uint8Array,
+  width: number,
+  height: number,
+  start: Frame,
+): Frame | undefined {
+  const bw = BUBBLE_W_FRAC * start.w;
+  const bh = BUBBLE_H_FRAC * start.h;
+  const hw = Math.max(6, Math.round(bw / 2));
+  const hh = Math.max(4, Math.round(bh / 2));
+  const coarse = findFrameGridOffset(gray, width, height, start, { dx: 14, dy: 14 });
+  let frame: Frame = { ...start, x: start.x + coarse.dx, y: start.y + coarse.dy };
+  let rows: [number, number][] = [];
+  let cols: [number, number][] = [];
+  let rowFit: { a: number; b: number } | undefined;
+  let colFit: { a: number; b: number } | undefined;
+  for (let pass = 0; pass < 2; pass++) {
+    const xs = COL_FRACS.map((frac) => frame.x + frac * frame.w);
+    const ys = Array.from(
+      { length: ROWS_PER_BLOCK },
+      (_, r) => frame.y + (ROW0_FRAC + ROW_PITCH_FRAC * r) * frame.h,
+    );
+    rows = [];
+    for (let r = 0; r < ROWS_PER_BLOCK; r++) {
+      let best = { score: Infinity, dy: 0 };
+      for (let dy = -20; dy <= 20; dy++) {
+        let sum = 0;
+        for (let c = 0; c < 4; c++) {
+          sum += ringMean(gray, width, height, Math.round(xs[c]), Math.round(ys[r] + dy), hw, hh);
+        }
+        // Same small centring preference as findFrameGridOffset.
+        const score = sum + 4 * 1.2 * Math.abs(dy);
+        if (score < best.score) best = { score, dy };
+      }
+      rows.push([r, ys[r] + best.dy]);
+    }
+    cols = [];
+    for (let c = 0; c < 4; c++) {
+      let best = { score: Infinity, dx: 0 };
+      for (let dx = -20; dx <= 20; dx++) {
+        let sum = 0;
+        for (let r = 0; r < ROWS_PER_BLOCK; r++) {
+          sum += ringMean(gray, width, height, Math.round(xs[c] + dx), Math.round(ys[r]), hw, hh);
+        }
+        const score = sum + ROWS_PER_BLOCK * 1.2 * Math.abs(dx);
+        if (score < best.score) best = { score, dx };
+      }
+      cols.push([COL_FRACS[c], xs[c] + best.dx]);
+    }
+    rowFit = linearFit(rows);
+    colFit = linearFit(cols);
+    if (!rowFit || !colFit || rowFit.b <= 0 || colFit.b <= 0) return undefined;
+    frame = {
+      x: colFit.a,
+      y: rowFit.a - (ROW0_FRAC * rowFit.b) / ROW_PITCH_FRAC,
+      w: colFit.b,
+      h: rowFit.b / ROW_PITCH_FRAC,
+    };
+  }
+  // The rows are 20 votes, so a few odd ones (a heavy pencil mark touching the
+  // printed outline) may disagree; every column must agree. And the result has
+  // to stay the block that was predicted, not some other part of the sheet.
+  if (!rowFit || !colFit) return undefined;
+  const offLine = rows.filter(([r, cy]) => Math.abs(cy - (rowFit.a + rowFit.b * r)) > 3).length;
+  const columnsAgree = cols.every(
+    ([frac, cx]) => Math.abs(cx - (colFit.a + colFit.b * frac)) <= 3,
+  );
+  const moved =
+    Math.abs(frame.x - start.x) > 0.1 * start.w || Math.abs(frame.y - start.y) > 0.04 * start.h;
+  const resized =
+    Math.abs(frame.h - start.h) > 0.06 * start.h || Math.abs(frame.w - start.w) > 0.06 * start.w;
+  if (offLine > 3 || !columnsAgree || moved || resized) return undefined;
+  return frame;
+}
+
+/**
+ * Put the batch's three blocks on this sheet. The sheet's own frames that lie
+ * where the other sheets have a block are kept exactly as found. A block the
+ * sheet did not find is predicted from a neighbour and the batch geometry, and
+ * is accepted only if the printed bubbles on this sheet confirm the place.
+ * Returns undefined when the result is not an improvement on its own frames.
+ */
+function placeBlocks(
+  gray: Uint8Array,
+  width: number,
+  height: number,
+  own: Frame[],
+  layout: Frame[],
+): Frame[] | undefined {
+  // Blocks of one sheet share its print scale, which differs slightly between
+  // sheets of a batch; the layout only fixes their relative positions.
+  const predict = (anchor: Frame, from: number, to: number): Frame => ({
+    x: anchor.x + (anchor.w / layout[from].w) * (layout[to].x - layout[from].x),
+    y: anchor.y + (anchor.w / layout[from].w) * (layout[to].y - layout[from].y),
+    w: (anchor.w / layout[from].w) * layout[to].w,
+    h: (anchor.h / layout[from].h) * layout[to].h,
+  });
+  const tolerance = Math.max(8, 0.006 * width);
+  let placed = new Map<number, Frame>();
+  let bestShift = Infinity;
+  for (let slot = 0; slot < layout.length; slot++) {
+    for (const frame of own) {
+      if (Math.abs(frame.w / layout[slot].w - 1) > 0.1) continue;
+      const matched = new Map<number, Frame>([[slot, frame]]);
+      for (let k = 0; k < layout.length; k++) {
+        if (k === slot) continue;
+        const target = predict(frame, slot, k);
+        const taken = [...matched.values()];
+        const hit = own.find(
+          (o) =>
+            !taken.includes(o) &&
+            Math.abs(o.x - target.x) <= tolerance &&
+            Math.abs(o.y - target.y) <= tolerance,
+        );
+        if (hit) matched.set(k, hit);
+      }
+      // Of equally good placements, the one closest to the batch's own position.
+      const shift =
+        Math.abs(frame.x - layout[slot].x) + Math.abs(frame.y - layout[slot].y);
+      if (matched.size > placed.size || (matched.size === placed.size && shift < bestShift)) {
+        placed = matched;
+        bestShift = shift;
+      }
+    }
+  }
+  // A sheet that found nothing it could match has nothing to anchor to.
+  if (placed.size === 0 && own.length > 0) return undefined;
+  for (let k = 0; k < layout.length; k++) {
+    if (placed.has(k)) continue;
+    // Predict from the nearest block placed so far: same sheet, so same scale.
+    // With no block at all, the batch position itself is the starting guess.
+    const from = [...placed.keys()].sort((a, b) => Math.abs(a - k) - Math.abs(b - k))[0];
+    const anchor = from === undefined ? undefined : placed.get(from);
+    const predicted = anchor ? predict(anchor, from, k) : { ...layout[k] };
+    const fitted = fitFrameToGrid(gray, width, height, predicted);
+    if (!fitted || frameGridSupport(gray, width, height, fitted) < 0.65) continue;
+    placed.set(k, {
+      x: Math.round(fitted.x),
+      y: Math.round(fitted.y),
+      w: Math.round(fitted.w),
+      h: Math.round(fitted.h),
+    });
+  }
+  const frames = [...placed.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, frame]) => frame);
+  if (frames.length < 2) return undefined;
+  const sameAsOwn =
+    frames.length === own.length &&
+    frames.every((frame) =>
+      own.some(
+        (o) =>
+          Math.abs(o.x - frame.x) <= 2 &&
+          Math.abs(o.y - frame.y) <= 2 &&
+          Math.abs(o.w - frame.w) <= 2 &&
+          Math.abs(o.h - frame.h) <= 2,
+      ),
+    );
+  if (sameAsOwn) return undefined;
+  const improved =
+    frames.length > own.length || (hasBlockLayout(frames) && !hasBlockLayout(own));
+  return improved ? frames : undefined;
+}
+
+/** placeBlocks for a sheet, given the batch layout (measured from the page centre). */
+export function placeBlocksOnSheet(
+  gray: Uint8Array,
+  width: number,
+  height: number,
+  own: Frame[],
+  guide: LayoutGuide,
+): Frame[] | undefined {
+  return placeBlocks(gray, width, height, own, guideOnPage(guide, width, height));
+}
+
 
 function mergeHeaderFields(
   primary: HeaderInfo | undefined,
@@ -891,16 +1235,38 @@ function mergeHeaderFields(
   };
 }
 
+/**
+ * The three answer blocks are printed side by side on one baseline. A broken
+ * scan edge can truncate one block's border lines; normalise their vertical
+ * geometry to the group median so every block keeps the same row template.
+ */
+function shareBaseline(frames: Frame[]): Frame[] {
+  if (frames.length < 2) return frames;
+  const sortedY = frames.map((f) => f.y).sort((a, b) => a - b);
+  const sortedH = frames.map((f) => f.h).sort((a, b) => a - b);
+  const mid = Math.floor(frames.length / 2);
+  const medianY =
+    frames.length % 2 === 0
+      ? (sortedY[mid - 1] + sortedY[mid]) / 2
+      : sortedY[mid];
+  const medianH =
+    frames.length % 2 === 0
+      ? (sortedH[mid - 1] + sortedH[mid]) / 2
+      : sortedH[mid];
+  return frames.map((f) => ({ ...f, y: Math.round(medianY), h: Math.round(medianH) }));
+}
+
 export function analyseGray(
   gray: Uint8Array,
   width: number,
   height: number,
   headerFallbackGray?: Uint8Array,
+  guide?: LayoutGuide,
 ): Detection {
   const started = performance.now();
   const binary = adaptiveBinary(gray, width, height);
   const allFrames = findAnswerFrames(binary, width, height);
-  if (allFrames.length < 2) {
+  if (allFrames.length < 2 && !guide) {
     return {
       ok: false,
       width,
@@ -942,26 +1308,21 @@ export function analyseGray(
     );
     frames = (consistent.length >= 3 ? consistent : pool).slice(0, 3);
   }
-  // The three answer blocks are printed side by side on one baseline. A broken
-  // scan edge can truncate one block's border lines; normalise their vertical
-  // geometry to the group median so every block keeps the same row template.
-  if (frames.length >= 2) {
-    const sortedY = frames.map((f) => f.y).sort((a, b) => a - b);
-    const sortedH = frames.map((f) => f.h).sort((a, b) => a - b);
-    const mid = Math.floor(frames.length / 2);
-    const medianY =
-      frames.length % 2 === 0
-        ? (sortedY[mid - 1] + sortedY[mid]) / 2
-        : sortedY[mid];
-    const medianH =
-      frames.length % 2 === 0
-        ? (sortedH[mid - 1] + sortedH[mid]) / 2
-        : sortedH[mid];
-    frames = frames.map((f) => ({ ...f, y: Math.round(medianY), h: Math.round(medianH) }));
-  }
+  frames = shareBaseline(frames);
   // Reject false "frames" such as page-table cells on a sideways scan. Every
   // genuine block has printed bubble outlines at all 80 template positions.
   frames = frames.filter((f) => frameGridSupport(gray, width, height, f) >= 0.65);
+  // A block found twice or not at all: place the batch's blocks on this sheet.
+  let realigned = false;
+  if (guide) {
+    const placed = placeBlocksOnSheet(gray, width, height, frames, guide);
+    if (placed) {
+      // Blocks the sheet found itself stay exactly as found; a placed block
+      // already carries the geometry fitted to its own printed grid.
+      frames = placed;
+      realigned = true;
+    }
+  }
   if (frames.length < 2) {
     return {
       ok: false,
@@ -970,7 +1331,13 @@ export function analyseGray(
       rotation: 0,
       frames,
       rows: [],
-      warnings: ['找不到完整的 4 × 20 答題格。請確認影像沒有旋轉或裁切。'],
+      warnings: [
+        allFrames.length < 2
+          ? allFrames.length === 1
+            ? '只找到一個答題欄。請確認相片包含完整答題紙，或裁剪後重新上載。'
+            : '找不到答題框。請確認影像清晰、包含完整答題紙，或改用 PDF 掃描。'
+          : '找不到完整的 4 × 20 答題格。請確認影像沒有旋轉或裁切。',
+      ],
       elapsedMs: Math.round(performance.now() - started),
     };
   }
@@ -999,6 +1366,7 @@ export function analyseGray(
     rows.push(...readFrame(gray, width, height, frames[i], i));
   }
   const warnings: string[] = [];
+  if (realigned) warnings.push(REALIGN_NOTE);
   if (frames.length < 3) {
     warnings.push(
       `只偵測到 ${frames.length} 個答題欄；題號可能不完整，請檢查影像是否被裁切。`,
@@ -1013,6 +1381,7 @@ export function analyseGray(
     rows,
     warnings,
     header,
+    realigned,
     elapsedMs: Math.round(performance.now() - started),
   };
 }
@@ -1041,6 +1410,7 @@ export function analyseWithRotation(
   width: number,
   height: number,
   headerFallbackGray?: Uint8Array,
+  guide?: LayoutGuide,
 ): Detection {
   let current = { gray, width, height };
   let fallback = headerFallbackGray;
@@ -1048,7 +1418,15 @@ export function analyseWithRotation(
   let rotation: 0 | 90 | 180 | 270 = 0;
   let last: Detection | null = null;
   for (let attempt = 0; attempt < 4; attempt++) {
-    const result = analyseGray(current.gray, current.width, current.height, fallback);
+    // The batch layout was measured upright, so it can only be tried in the
+    // orientation the other sheets were read in.
+    const result = analyseGray(
+      current.gray,
+      current.width,
+      current.height,
+      fallback,
+      guide && guide.rotation === rotation ? guide : undefined,
+    );
     result.rotation = rotation;
     if (result.ok) return result;
     last = result;
