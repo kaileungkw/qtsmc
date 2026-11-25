@@ -27,6 +27,9 @@ export default function Header({
   onDeleteTask,
   taskDisabled = false,
 }: HeaderProps) {
+  const activeTask = tasks.find((task) => task.id === activeTaskId);
+  const isSurvey = activeTask?.kind === 'survey';
+
   return (
     <header className="site-header">
       <div className="brand">
@@ -36,7 +39,7 @@ export default function Header({
         </div>
         <div className="brand-text">
           <strong>QTSMC</strong>
-          <span>答題紙批改</span>
+          <span>{isSurvey ? '選科表辨識' : '答題紙批改'}</span>
         </div>
       </div>
 
@@ -58,7 +61,9 @@ export default function Header({
                 .map((task) => (
                   <option key={task.id} value={task.id}>
                     {taskLabel(task, tasks.indexOf(task))}
-                    {task.sheetCount > 0 ? `（${task.sheetCount} 張）` : '（空白）'}
+                    {task.sheetCount > 0
+                      ? `（${task.sheetCount} ${task.kind === 'survey' ? '份' : '張'}）`
+                      : '（空白）'}
                   </option>
                 ))
             )}
@@ -84,7 +89,7 @@ export default function Header({
           className="btn primary small new-task-btn"
           onClick={onNewTask}
           disabled={taskDisabled}
-          title="建立新任務（需選年級及科目）"
+          title="建立新任務（需選類型、年級及科目）"
         >
           <Plus size={15} />
           <span>新任務</span>

@@ -1,0 +1,188 @@
+/**
+ * PDF rendering for the S3 subject-preference survey mode.
+ *
+ * Scans of the survey are A3 sheets with two A4 pages side by side. Every
+ * landscape page is split down the middle, each half is deskewed with the same
+ * projection method as the MCQ pipeline, and the result is handed to the pure
+ * analyser in survey.ts as a grayscale buffer.
+ */
+import * as pdfjsLib from 'pdfjs-dist';
+import { estimateSkew, rotateCanvas } from './pdf';
+import type { SurveyGrayImage, SurveyTextPage } from './survey';
+
+const PORTRAIT_WIDTH = 1500;
+const LANDSCAPE_WIDTH = 3000;
+
+export interface SurveyRenderedPage {
+  pageNo: number;
+  half: 'full' | 'left' | 'right';
+  width: number;
+  height: number;
+  /** True when the half has almost no ink (the back of the booklet). */
+  blank: boolean;
+  gray: SurveyGrayImage;
+}
+
+function grayFromCanvas(canvas: HTMLCanvasElement): SurveyGrayImage {
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) throw new Error('瀏覽器不支援 Canvas。');
+  const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const gray = new Uint8Array(width * height);
+  for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+    gray[p] = (data[i] * 299 + data[i + 1] * 587 + data[i + 2] * 114) / 1000;
+  }
+  return { data: gray, width, height };
+}
+
+function splitCanvas(canvas: HTMLCanvasElement, side: 'left' | 'right'): HTMLCanvasElement {
+  const width = Math.floor(canvas.width / 2);
+  const x = side === 'left' ? 0 : canvas.width - width;
+  const out = document.createElement('canvas');
+  out.width = width;
+  out.height = canvas.height;
+  const ctx = out.getContext('2d');
+  if (!ctx) throw new Error('瀏覽器不支援 Canvas。');
+  ctx.drawImage(canvas, x, 0, width, canvas.height, 0, 0, width, canvas.height);
+  return out;
+}
+
+function inkFraction(gray: SurveyGrayImage): number {
+  let dark = 0;
+  for (let i = 0; i < gray.data.length; i++) if (gray.data[i] < 150) dark += 1;
+  return dark / Math.max(1, gray.data.length);
+}
+
+async function renderPageCanvas(
+  page: pdfjsLib.PDFPageProxy,
+  targetWidth: number,
+): Promise<HTMLCanvasElement> {
+  const base = page.getViewport({ scale: 1 });
+  const viewport = page.getViewport({ scale: targetWidth / base.width });
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.ceil(viewport.width);
+  canvas.height = Math.ceil(viewport.height);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('瀏覽器不支援 Canvas。');
+  await page.render({ canvasContext: ctx, viewport }).promise;
+  return canvas;
+}
+
+async function openPdf(file: Blob): Promise<pdfjsLib.PDFDocumentProxy> {
+  const data = new Uint8Array(await file.arrayBuffer());
+  return pdfjsLib.getDocument({ data }).promise;
+}
+
+/**
+ * 逐頁渲染一份掃描 PDF。A3 會分左右兩半，每半獨立校正傾斜。
+ * The callback receives one logical A4 page at a time so the page image can be
+ * released before the next one is rendered (a 150-page batch would not fit).
+ */
+export async function forEachSurveyPage(
+  file: File,
+  onPage: (page: SurveyRenderedPage) => Promise<void> | void,
+  onProgress?: (done: number, total: number) => void,
+): Promise<void> {
+  const pdf = await openPdf(file);
+  try {
+    for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
+      const page = await pdf.getPage(pageNo);
+      const base = page.getViewport({ scale: 1 });
+      const landscape = base.width > base.height * 1.25;
+      const canvas = await renderPageCanvas(
+        page,
+        landscape ? LANDSCAPE_WIDTH : PORTRAIT_WIDTH,
+      );
+      if (landscape) {
+        for (const side of ['left', 'right'] as const) {
+          const halfCanvas = splitCanvas(canvas, side);
+          const skew = estimateSkew(halfCanvas);
+          const upright = skew ? rotateCanvas(halfCanvas, skew) : halfCanvas;
+          const gray = grayFromCanvas(upright);
+          await onPage({
+            pageNo,
+            half: side,
+            width: gray.width,
+            height: gray.height,
+            blank: inkFraction(gray) < 0.002,
+            gray,
+          });
+        }
+      } else {
+        const skew = estimateSkew(canvas);
+        const upright = skew ? rotateCanvas(canvas, skew) : canvas;
+        const gray = grayFromCanvas(upright);
+        await onPage({
+          pageNo,
+          half: 'full',
+          width: gray.width,
+          height: gray.height,
+          blank: inkFraction(gray) < 0.002,
+          gray,
+        });
+      }
+      page.cleanup();
+      onProgress?.(pageNo, pdf.numPages);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  } finally {
+    await pdf.destroy();
+  }
+}
+
+/** Text layer of the blank form: the bubble glyphs and the subject names. */
+export async function readSurveyTextPages(file: File): Promise<SurveyTextPage[]> {
+  const pdf = await openPdf(file);
+  const pages: SurveyTextPage[] = [];
+  try {
+    for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
+      const page = await pdf.getPage(pageNo);
+      const viewport = page.getViewport({ scale: 1 });
+      const content = await page.getTextContent();
+      const items: SurveyTextPage['items'] = [];
+      for (const item of content.items) {
+        if (!('str' in item) || typeof item.str !== 'string' || !item.str) continue;
+        const transform = item.transform;
+        items.push({
+          text: item.str,
+          x: transform[4],
+          y: viewport.height - transform[5],
+          height: Math.abs(transform[3]) || item.height || 10,
+          width: item.width || 0,
+        });
+      }
+      pages.push({
+        page: pageNo,
+        width: viewport.width,
+        height: viewport.height,
+        items,
+      });
+      page.cleanup();
+    }
+  } finally {
+    await pdf.destroy();
+  }
+  return pages;
+}
+
+/** Render one logical page for the review viewer. */
+export async function renderSurveyReviewPage(
+  file: File,
+  pageNo: number,
+  half: 'full' | 'left' | 'right',
+): Promise<HTMLCanvasElement> {
+  const pdf = await openPdf(file);
+  try {
+    const page = await pdf.getPage(pageNo);
+    const base = page.getViewport({ scale: 1 });
+    const landscape = base.width > base.height * 1.25;
+    const canvas = await renderPageCanvas(
+      page,
+      landscape ? LANDSCAPE_WIDTH : PORTRAIT_WIDTH,
+    );
+    const part = landscape ? splitCanvas(canvas, half === 'right' ? 'right' : 'left') : canvas;
+    const skew = estimateSkew(part);
+    return skew ? rotateCanvas(part, skew) : part;
+  } finally {
+    await pdf.destroy();
+  }
+}

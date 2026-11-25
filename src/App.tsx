@@ -5,6 +5,7 @@ import Results from './components/Results';
 import ReviewModal from './components/ReviewModal';
 import KeyEditor from './components/KeyEditor';
 import TaskSetupModal from './components/TaskSetupModal';
+import SurveyWorkspace from './components/SurveyWorkspace';
 import Toast, { type ToastKind } from './components/Toast';
 import Footer from './components/Footer';
 import { analyseResults, getKeyAnswers, getSheetAnswers, suggestPassMark, suggestQuestionCountFromClass, MAX_QUESTIONS } from './lib/scoring';
@@ -13,6 +14,7 @@ import { buildLayoutGuide, needsLayoutGuide } from './lib/marker';
 import { clearSession, loadSession } from './lib/storage';
 import {
   createTaskMeta,
+  deleteSurveySession,
   deleteTaskSession,
   loadTaskIndex,
   loadTaskSession,
@@ -34,6 +36,7 @@ import type {
   Settings,
   SheetOverrides,
   SourcePdf,
+  TaskKind,
   TaskMeta,
 } from './types';
 
@@ -283,6 +286,8 @@ export default function App() {
   const [taskBusy, setTaskBusy] = useState(false);
   const [setupMode, setSetupMode] = useState<'new' | 'upload' | null>(null);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const activeTask = tasks.find((task) => task.id === activeTaskId);
+  const isSurveyTask = activeTask?.kind === 'survey';
   const bootRef = useRef<Promise<BootResult> | null>(null);
 
   const showToast = useCallback((message: string, kind: ToastKind = 'info') => {
@@ -446,7 +451,7 @@ export default function App() {
 
   // Autosave the active task (including an empty task's subject/settings).
   useEffect(() => {
-    if (!hydrated || processing || !activeTaskId || taskLoadError) return;
+    if (!hydrated || processing || !activeTaskId || taskLoadError || isSurveyTask) return;
     const timer = window.setTimeout(() => {
       setSaveState('saving');
       saveTaskSession(activeTaskId, buildSession())
@@ -454,11 +459,11 @@ export default function App() {
         .catch(() => setSaveState('error'));
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [hydrated, processing, activeTaskId, buildSession, taskLoadError]);
+  }, [hydrated, processing, activeTaskId, buildSession, taskLoadError, isSurveyTask]);
 
   // Keep the task switcher labels and counts in sync immediately.
   useEffect(() => {
-    if (!activeTaskId) return;
+    if (!activeTaskId || isSurveyTask) return;
     setTasks((prev) => {
       const index = prev.findIndex((task) => task.id === activeTaskId);
       if (index < 0) return prev;
@@ -494,6 +499,7 @@ export default function App() {
     settings.date,
     settings.questionCount,
     sheets.length,
+    isSurveyTask,
   ]);
 
   useEffect(() => {
@@ -923,7 +929,8 @@ export default function App() {
       }
       setTaskBusy(true);
       try {
-        if (activeTaskId) {
+        const current = tasks.find((task) => task.id === activeTaskId);
+        if (activeTaskId && current?.kind !== 'survey') {
           try {
             await saveTaskSession(activeTaskId, buildSession());
           } catch {
@@ -935,6 +942,22 @@ export default function App() {
           }
         }
         const target = tasks.find((task) => task.id === id);
+        if (target?.kind === 'survey') {
+          for (const sheet of sheets) URL.revokeObjectURL(sheet.previewUrl);
+          setSheets([]);
+          setSourcePdfs([]);
+          setOverrides({});
+          setKeyOverrides({});
+          setSettings({
+            ...DEFAULT_SETTINGS,
+            formLevel: target.formLevel,
+            subject: target.subject,
+            date: target.date,
+          });
+          setActiveTaskId(id);
+          showToast('已切換至選科表任務。', 'success');
+          return;
+        }
         const saved = await loadTaskSession(id);
         applyTaskContent(saved, target);
         setActiveTaskId(id);
@@ -957,11 +980,12 @@ export default function App() {
     ],
   );
 
-  const createNewTask = useCallback(async (formLevel: string, subject: string) => {
+  const createNewTask = useCallback(async (formLevel: string, subject: string, kind: TaskKind = 'mcq') => {
     if (processing || taskBusy || importProgress.active) return;
     setTaskBusy(true);
     try {
-      if (activeTaskId) {
+      const currentKind = tasks.find((task) => task.id === activeTaskId)?.kind;
+      if (activeTaskId && currentKind !== 'survey') {
         try {
           await saveTaskSession(activeTaskId, buildSession());
         } catch {
@@ -972,16 +996,21 @@ export default function App() {
           return;
         }
       }
-      // Replace an unused task instead of leaving an empty entry behind.
+      // Replace an unused task instead of leaving an empty entry behind. A
+      // survey task's form count lives on the task meta, not in `sheets`.
       const current = tasks.find((task) => task.id === activeTaskId);
-      const replaceCurrent =
-        Boolean(activeTaskId) &&
-        sheets.length === 0 &&
-        !current?.title.trim();
+      const currentEmpty =
+        current?.kind === 'survey'
+          ? (current.sheetCount ?? 0) === 0
+          : sheets.length === 0 && !current?.title.trim();
+      const replaceCurrent = Boolean(activeTaskId) && currentEmpty;
       if (replaceCurrent && activeTaskId) {
         await deleteTaskSession(activeTaskId).catch(() => undefined);
+        if (current?.kind === 'survey') {
+          await deleteSurveySession(activeTaskId).catch(() => undefined);
+        }
       }
-      const meta = createTaskMeta(uid(), '', subject, formLevel);
+      const meta = createTaskMeta(uid(), '', subject, formLevel, kind);
       for (const sheet of sheets) URL.revokeObjectURL(sheet.previewUrl);
       setSheets([]);
       setSourcePdfs([]);
@@ -1004,7 +1033,10 @@ export default function App() {
           : [...prev, meta],
       );
       setActiveTaskId(meta.id);
-      showToast('已建立新任務；請上載答題紙。', 'success');
+      showToast(
+        kind === 'survey' ? '已建立選科表任務；請上載空白表格及掃描。' : '已建立新任務；請上載答題紙。',
+        'success',
+      );
     } finally {
       setTaskBusy(false);
     }
@@ -1031,13 +1063,13 @@ export default function App() {
   }, []);
 
   const confirmSetup = useCallback(
-    (formLevel: string, subject: string) => {
+    (formLevel: string, subject: string, kind: TaskKind = 'mcq') => {
       const mode = setupMode;
       const files = pendingFiles;
       setSetupMode(null);
       setPendingFiles([]);
       if (mode === 'new') {
-        void createNewTask(formLevel, subject);
+        void createNewTask(formLevel, subject, kind);
         return;
       }
       if (mode === 'upload' && files.length) {
@@ -1084,6 +1116,7 @@ export default function App() {
     setTaskBusy(true);
     try {
       await deleteTaskSession(activeTaskId);
+      if (active.kind === 'survey') await deleteSurveySession(activeTaskId);
       const remaining = tasks.filter((task) => task.id !== activeTaskId);
       if (remaining.length === 0) {
         const meta = createTaskMeta(uid());
@@ -1212,6 +1245,20 @@ export default function App() {
     settings.questionCount > 0 &&
     sheets.some((s) => s.status === 'done' || s.detection?.ok);
 
+  // The survey workspace owns its own data; it reports the form count back so
+  // the task switcher shows the right number.
+  const updateSurveyMeta = useCallback(
+    (patch: Partial<TaskMeta>) => {
+      if (!activeTaskId) return;
+      setTasks((prev) =>
+        prev.map((task) =>
+          task.id === activeTaskId ? { ...task, ...patch, updatedAt: Date.now() } : task,
+        ),
+      );
+    },
+    [activeTaskId],
+  );
+
   return (
     <div className="app-shell">
       <Header
@@ -1226,6 +1273,16 @@ export default function App() {
       />
 
       <main>
+        {isSurveyTask && activeTask ? (
+          <SurveyWorkspace
+            task={activeTask}
+            roster={roster}
+            onToast={showToast}
+            onTaskUpdate={updateSurveyMeta}
+            onBusy={setTaskBusy}
+          />
+        ) : (
+        <>
         {sheets.length === 0 && (
           <div className="intro-strip">
             <p className="intro-title">QTSMC 答題紙批改工具</p>
@@ -1339,9 +1396,14 @@ export default function App() {
             </button>
           </div>
         )}
+        </>
+        )}
       </main>
 
-      <Footer onDeleteTask={() => void deleteCurrentTask()} />
+      <Footer
+        onDeleteTask={() => void deleteCurrentTask()}
+        kind={activeTask?.kind}
+      />
 
       {taskLoadError && (
         <div

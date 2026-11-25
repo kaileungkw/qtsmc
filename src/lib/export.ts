@@ -54,7 +54,11 @@ function safeName(value: string): string {
 }
 
 /** e.g. 2627_T1_S4_物理_報告 All in one */
-export function reportFileBase(settings: Settings): string {
+export function reportFileBase(settings: {
+  date: string;
+  formLevel: string;
+  subject: string;
+}): string {
   const parts = [
     academicPeriod(settings.date).prefix,
     settings.formLevel,
