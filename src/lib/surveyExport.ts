@@ -52,6 +52,11 @@ function contentGrids(template: SurveyTemplate): { page: number; grid: SurveyTem
   );
 }
 
+function subjectLabel(grid: SurveyTemplateGrid, index: number): string {
+  const code = grid.mode === 'single' ? grid.codes?.[index] : undefined;
+  return code ? `${code} ${grid.rows[index]}` : grid.rows[index];
+}
+
 function gridLabel(template: SurveyTemplate, grid: SurveyTemplateGrid): string {
   const page = template.pages.find((item) => item.page === grid.page);
   const content = page?.grids.filter((item) => !item.isCandidate) ?? [];
@@ -119,13 +124,10 @@ async function buildXlsx(input: ExportInput): Promise<Blob> {
     styleHeader(cell, TEAL);
     for (let row = 0; row < grid.rows.length; row++) {
       const sub = head2.getCell(column + row);
-      sub.value =
-        grid.mode === 'single' && grid.codes?.[row]
-          ? `${grid.codes[row]}`.trim()
-          : grid.rows[row];
+      sub.value = subjectLabel(grid, row);
       styleHeader(sub, TEAL);
       sub.font = { name: FONT, size: 8, bold: true, color: { argb: 'FFFFFFFF' } };
-      sheet.getColumn(column + row).width = grid.mode === 'single' ? 13 : 9;
+      sheet.getColumn(column + row).width = grid.mode === 'single' ? 26 : 9;
     }
     column += grid.rows.length;
   }
@@ -206,7 +208,7 @@ async function buildXlsx(input: ExportInput): Promise<Blob> {
           form.seatNo,
           page,
           gridLabel(input.template, grid),
-          grid.rows[index],
+          subjectLabel(grid, index),
           grid.mode === 'single' ? (value ? '✓' : '') : (value ?? 'BLANK'),
           note,
         ]);
@@ -229,7 +231,7 @@ async function buildXlsx(input: ExportInput): Promise<Blob> {
         stats.addRow([
           page,
           gridLabel(input.template, grid),
-          grid.rows[index],
+          subjectLabel(grid, index),
           values.filter((value) => value === 1).length,
           '',
           '',
@@ -244,7 +246,7 @@ async function buildXlsx(input: ExportInput): Promise<Blob> {
       stats.addRow([
         page,
         gridLabel(input.template, grid),
-        grid.rows[index],
+        subjectLabel(grid, index),
         values.length,
         values.filter((value) => value === 1).length,
         values.filter((value) => value === 2).length,
@@ -302,7 +304,9 @@ function buildCsvFiles(input: ExportInput): { name: string; text: string }[] {
       '姓名',
       '班別',
       '學號',
-      ...grids.flatMap(({ grid }) => grid.rows.map((label) => `${gridLabel(input.template, grid)} ${label}`)),
+      ...grids.flatMap(({ grid }) =>
+        grid.rows.map((_, index) => `${gridLabel(input.template, grid)} ${subjectLabel(grid, index)}`),
+      ),
       '狀態',
     ]),
   );
@@ -340,7 +344,7 @@ function buildCsvFiles(input: ExportInput): { name: string; text: string }[] {
             form.seatNo,
             page,
             gridLabel(input.template, grid),
-            grid.rows[index],
+            subjectLabel(grid, index),
             grid.mode === 'single' ? (value ? '✓' : '') : (value ?? 'BLANK'),
             form.reviewed
               ? '覆核完成'
@@ -366,7 +370,7 @@ function buildCsvFiles(input: ExportInput): { name: string; text: string }[] {
           csvLine([
             page,
             gridLabel(input.template, grid),
-            grid.rows[index],
+            subjectLabel(grid, index),
             values.filter((value) => value === 1).length,
             '',
             '',
@@ -379,7 +383,7 @@ function buildCsvFiles(input: ExportInput): { name: string; text: string }[] {
           csvLine([
             page,
             gridLabel(input.template, grid),
-            grid.rows[index],
+            subjectLabel(grid, index),
             values.length,
             values.filter((value) => value === 1).length,
             values.filter((value) => value === 2).length,

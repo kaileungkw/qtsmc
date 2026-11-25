@@ -8,6 +8,7 @@ import {
   FileText,
   Loader2,
   ScanLine,
+  Trash2,
   UploadCloud,
 } from 'lucide-react';
 import type { TaskMeta } from '../types';
@@ -88,7 +89,15 @@ export default function SurveyWorkspace({
   const [forms, setForms] = useState<SurveyForm[]>([]);
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0, label: '' });
+  const [detail, setDetail] = useState<{
+    fileName: string;
+    page: number;
+    pages: number;
+    half: string;
+    phase: string;
+  } | null>(null);
   const [filter, setFilter] = useState<'all' | 'review' | 'reviewed'>('all');
+  const [view, setView] = useState<'results' | 'stats'>('results');
   const [reviewForm, setReviewForm] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -261,20 +270,42 @@ export default function SurveyWorkspace({
     [onToast, template],
   );
 
+  const removeScan = useCallback((index: number) => {
+    setScans((prev) => prev.filter((_, i) => i !== index));
+    setPages([]);
+    setForms([]);
+  }, []);
+
   const process = useCallback(async () => {
     if (!template || !scans.length || processing) return;
     setProcessing(true);
     onBusy(true);
     setProgress({ done: 0, total: scans.length, label: '準備中' });
+    setDetail(null);
     const collected: SurveyLogicalPage[] = [];
     try {
       for (let fileIndex = 0; fileIndex < scans.length; fileIndex++) {
         const scan = scans[fileIndex];
         setProgress({ done: fileIndex, total: scans.length, label: scan.name });
+        setDetail({
+          fileName: scan.name,
+          page: 0,
+          pages: 0,
+          half: '',
+          phase: '分拆／校正',
+        });
         const file = new File([scan.blob], scan.name, { type: scan.blob.type || '' });
         await forEachSurveyPage(
           file,
-          (page) => {
+          async (page) => {
+            setDetail((previous) => ({
+              fileName: scan.name,
+              page: page.pageNo,
+              pages: previous?.pages ?? 0,
+              half: page.half === 'left' ? '左頁' : page.half === 'right' ? '右頁' : '整頁',
+              phase: page.blank ? '空白頁' : '辨識中',
+            }));
+            await new Promise((resolve) => setTimeout(resolve, 0));
             const id = `${fileIndex}-${page.pageNo}-${page.half}`;
             if (page.blank) {
               collected.push({
@@ -301,8 +332,17 @@ export default function SurveyWorkspace({
               blank: false,
               read,
             });
+            await new Promise((resolve) => setTimeout(resolve, 0));
           },
-          () => undefined,
+          (pageNo, total) => {
+            setDetail({
+              fileName: scan.name,
+              page: pageNo,
+              pages: total,
+              half: '',
+              phase: pageNo ? '完成本頁' : '分拆／校正',
+            });
+          },
         );
       }
       const lookup = (candidateNo: string) => {
@@ -314,6 +354,7 @@ export default function SurveyWorkspace({
           seatNo: String(entry.num).padStart(2, '0'),
         };
       };
+      setDetail(null);
       const assembled = assembleSurveyForms(collected, template, lookup);
       setPages(collected);
       setForms(assembled);
@@ -404,13 +445,55 @@ export default function SurveyWorkspace({
       92 +
       contentGrids.reduce(
         (sum, { grid }) =>
-          sum + grid.rows.length * (grid.mode === 'single' ? 54 : 38),
+          sum + grid.rows.length * (grid.mode === 'single' ? 92 : 44),
         0,
       ),
     [contentGrids],
   );
 
+  const statsRows = useMemo(
+    () =>
+      contentGrids.flatMap(({ grid }) =>
+        grid.rows.map((label, index) => {
+          const values = forms
+            .map((form) => form.values[grid.id]?.[index] ?? null)
+            .filter((value): value is number => value !== null);
+          const code = grid.codes?.[index];
+          return {
+            key: `${grid.id}-${index}`,
+            group: shortGridLabel(template!, grid),
+            label: `${code ? `${code} ` : ''}${label}`,
+            single: grid.mode === 'single',
+            count:
+              grid.mode === 'single'
+                ? values.filter((value) => value === 1).length
+                : values.length,
+            first: values.filter((value) => value === 1).length,
+            second: values.filter((value) => value === 2).length,
+            third: values.filter((value) => value === 3).length,
+            average: values.length
+              ? Math.round(
+                  (values.reduce((sum, value) => sum + value, 0) / values.length) * 100,
+                ) / 100
+              : null,
+          };
+        }),
+      ),
+    [contentGrids, forms, template],
+  );
+
   const selectedForm = forms.find((form) => form.id === reviewForm) ?? null;
+  const overallPercent = processing
+    ? Math.min(
+        99,
+        Math.round(
+          ((progress.done +
+            (detail?.pages ? detail.page / detail.pages : 0)) /
+            Math.max(1, progress.total)) *
+            100,
+        ),
+      )
+    : 0;
   const done = forms.length > 0;
   const scanPageCount = pages.filter((page) => !page.blank).length;
 
@@ -446,6 +529,15 @@ export default function SurveyWorkspace({
 
   return (
     <div className="survey-workspace">
+      {!done && (
+        <div className="intro-strip survey-intro-strip">
+          <p className="intro-title">QTSMC 中三選科表工具</p>
+          <p className="intro-line">
+            先上載學校原本的空白表格 PDF，再上載已填寫的掃描；所有影像及結果只留在你的裝置，不會上傳至任何伺服器。
+          </p>
+        </div>
+      )}
+
       <section className="panel survey-panel">
         <div className="panel-head">
           <div>
@@ -456,6 +548,9 @@ export default function SurveyWorkspace({
             </p>
           </div>
           <div className="panel-head-meta">
+            <span className={`count-pill ${template ? 'ready' : ''}`}>
+              {template ? `${template.pages.length} 頁` : '未上載'}
+            </span>
             {template ? (
               <button
                 className="btn ghost small"
@@ -611,10 +706,49 @@ export default function SurveyWorkspace({
               <li key={`${scan.name}-${index}`}>
                 <FileText size={14} />
                 <span>{scan.name}</span>
+                <button
+                  type="button"
+                  className="icon-btn danger"
+                  onClick={() => removeScan(index)}
+                  disabled={processing}
+                  aria-label={`移除 ${scan.name}`}
+                >
+                  <Trash2 size={13} />
+                </button>
               </li>
             ))}
           </ul>
         )}
+
+      {processing && (
+        <div
+          className="processing-banner survey-processing-banner"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="processing-copy">
+            <span className="spinner" />
+            <div>
+              <strong>正在分拆及辨識選科表</strong>
+              <small>
+                {detail
+                  ? `${detail.fileName} · ${detail.phase}${
+                      detail.page
+                        ? ` · 第 ${detail.page}/${detail.pages || '?'} 頁`
+                        : ''
+                    }${detail.half ? `（${detail.half}）` : ''}`
+                  : '準備中'}
+              </small>
+            </div>
+          </div>
+          <div className="progress-track">
+            <div
+              className="progress-fill"
+              style={{ width: `${Math.max(4, overallPercent)}%` }}
+            />
+          </div>
+        </div>
+      )}
 
         <div className="survey-requirements" aria-live="polite">
           <span className={template ? 'ok' : 'missing'}>
@@ -684,7 +818,8 @@ export default function SurveyWorkspace({
               <span className="section-kicker">STEP 03 · 結果</span>
               <h2>選科排序</h2>
               <p className="panel-sub">
-                {scanPageCount} 頁掃描 · {forms.length} 份表 · 姓名由考生號碼配對全校名單。
+                {surveyRoundLabel(task.date)} · {scanPageCount} 頁掃描 · {forms.length} 份表 ·
+                姓名由考生號碼配對全校名單。
               </p>
             </div>
             <div className="panel-head-meta">
@@ -725,6 +860,21 @@ export default function SurveyWorkspace({
           </div>
 
           <div className="survey-toolbar">
+            <div className="survey-view-tabs">
+              <button
+                className={view === 'results' ? 'active' : ''}
+                onClick={() => setView('results')}
+              >
+                選科結果
+              </button>
+              <button
+                className={view === 'stats' ? 'active' : ''}
+                onClick={() => setView('stats')}
+              >
+                科目統計
+              </button>
+            </div>
+            {view === 'results' && (
             <div className="filter-chips">
               <button
                 className={`chip ${filter === 'all' ? 'active' : ''}`}
@@ -749,9 +899,54 @@ export default function SurveyWorkspace({
                 </button>
               )}
             </div>
-            <span className="survey-hint">點擊一行可覆核該名學生。</span>
+            )}
+            {view === 'results' && (
+              <span className="survey-hint">點擊一行可覆核該名學生。</span>
+            )}
           </div>
 
+          {view === 'stats' ? (
+            <div className="survey-stats-wrap">
+              <table className="survey-stats-table">
+                <thead>
+                  <tr>
+                    <th>組別</th>
+                    <th>科目／課程</th>
+                    <th>有效／選擇</th>
+                    <th>第 1 志願</th>
+                    <th>第 2 志願</th>
+                    <th>第 3 志願</th>
+                    <th>平均排序</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {statsRows.map((row) => (
+                    <tr key={row.key} className={row.single ? 'single' : ''}>
+                      <td>{row.group}</td>
+                      <td>{row.label}</td>
+                      <td>{row.count}</td>
+                      {row.single ? (
+                        <>
+                          <td>—</td>
+                          <td>—</td>
+                          <td>—</td>
+                          <td>—</td>
+                        </>
+                      ) : (
+                        <>
+                          <td>{row.first}</td>
+                          <td>{row.second}</td>
+                          <td>{row.third}</td>
+                          <td>{row.average ?? '—'}</td>
+                        </>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <>
           <div className="survey-table-wrap">
             <table className="survey-table" style={{ width: tableWidth }}>
               <colgroup>
@@ -761,7 +956,7 @@ export default function SurveyWorkspace({
                   grid.rows.map((_, index) => (
                     <col
                       key={`${grid.id}-col-${index}`}
-                      style={{ width: grid.mode === 'single' ? 58 : 44 }}
+                      style={{ width: grid.mode === 'single' ? 92 : 44 }}
                     />
                   )),
                 )}
@@ -788,10 +983,23 @@ export default function SurveyWorkspace({
                 <tr>
                   {contentGrids.flatMap(({ grid }) =>
                     grid.rows.map((label, index) => (
-                      <th key={`${grid.id}-${index}`} className="survey-subject-head" title={label}>
-                        {grid.mode === 'single' && grid.codes?.[index]
-                          ? grid.codes[index]
-                          : label}
+                      <th
+                        key={`${grid.id}-${index}`}
+                        className="survey-subject-head"
+                        title={
+                          grid.mode === 'single' && grid.codes?.[index]
+                            ? `${grid.codes[index]} ${label}`
+                            : label
+                        }
+                      >
+                        {grid.mode === 'single' && grid.codes?.[index] ? (
+                          <>
+                            <span className="survey-apl-code">{grid.codes[index]}</span>
+                            <small>{label}</small>
+                          </>
+                        ) : (
+                          label
+                        )}
                       </th>
                     )),
                   )}
@@ -913,12 +1121,38 @@ export default function SurveyWorkspace({
                     );
                   })()}
                 </div>
+                {(() => {
+                  const apl = contentGrids.filter(({ grid }) => grid.mode === 'single');
+                  const selected = apl.flatMap(({ grid }) =>
+                    grid.rows
+                      .map((label, index) => ({
+                        code: grid.codes?.[index],
+                        label,
+                        value: form.values[grid.id]?.[index] ?? null,
+                      }))
+                      .filter((item) => item.value),
+                  );
+                  if (!selected.length) return null;
+                  return (
+                    <p className="survey-card-apl">
+                      <span>應用學習</span>
+                      {selected.map((item) => (
+                        <em key={`${item.code}-${item.label}`}>
+                          {item.code ? `${item.code} ` : ''}
+                          {item.label}
+                        </em>
+                      ))}
+                    </p>
+                  );
+                })()}
                 <small className="survey-card-more">
                   共 {contentGrids.length} 組 · 點擊查看全部
                 </small>
               </article>
             ))}
           </div>
+            </>
+          )}
         </section>
       )}
 

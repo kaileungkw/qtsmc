@@ -159,12 +159,14 @@ export async function forEachSurveyPage(
       throw new Error('請上載 PDF 或 JPG／PNG 掃描。');
     }
     const canvas = await imageToCanvas(file);
+    onProgress?.(0, 1);
     await emitCanvasPages(canvas, 1, onPage);
     onProgress?.(1, 1);
     return;
   }
   const pdf = await openPdf(file);
   try {
+    onProgress?.(0, pdf.numPages);
     for (let pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
       const page = await pdf.getPage(pageNo);
       const base = page.getViewport({ scale: 1 });

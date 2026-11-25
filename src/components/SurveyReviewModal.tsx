@@ -295,9 +295,10 @@ export default function SurveyReviewModal({
                 {grid.rows.map((label, index) => {
                   const value = form.values[grid.id]?.[index] ?? null;
                   const flag = form.ambiguous.includes(`${grid.id}:${index}`);
+                  const display = grid.codes?.[index] ? `${grid.codes[index]} ${label}` : label;
                   return (
                     <label key={`${grid.id}-${index}`} className={`survey-review-row ${flag ? 'flag' : ''}`}>
-                      <span title={label}>{label}</span>
+                      <span title={display}>{display}</span>
                       {grid.mode === 'single' ? (
                         <input
                           type="checkbox"
