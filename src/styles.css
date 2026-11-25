@@ -5910,12 +5910,15 @@ body:has(.modal-backdrop) .toast {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(300px, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .survey-review-viewer {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
   border-right: 1px solid var(--line);
 }
 
@@ -5953,21 +5956,34 @@ body:has(.modal-backdrop) .toast {
   position: relative;
   padding: 10px;
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: flex-start;
+  cursor: grab;
+  overscroll-behavior: contain;
+}
+
+.survey-canvas-wrap.dragging {
+  cursor: grabbing;
+  user-select: none;
 }
 
 .survey-canvas {
   max-width: 100%;
   height: auto;
+  margin: 0 auto;
   border-radius: 4px;
   box-shadow: var(--shadow-sm);
   background: #fff;
 }
 
+.survey-canvas-wrap.zoomed {
+  justify-content: flex-start;
+}
+
 .survey-canvas-wrap.zoomed .survey-canvas {
   max-width: none;
   width: 160%;
+  margin: 0;
 }
 
 .survey-canvas-loading {
@@ -6008,6 +6024,7 @@ body:has(.modal-backdrop) .toast {
 
 .survey-review-side {
   overflow: auto;
+  min-height: 0;
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
@@ -6129,13 +6146,20 @@ body:has(.modal-backdrop) .toast {
   }
 
   .survey-review-body {
-    grid-template-columns: 1fr;
+    display: block;
+    overflow: auto;
+    min-height: 0;
   }
 
   .survey-review-viewer {
     border-right: 0;
     border-bottom: 1px solid var(--line);
-    max-height: 46vh;
+    height: 40vh;
+    min-height: 0;
+  }
+
+  .survey-review-side {
+    overflow: visible;
   }
 
   .survey-review-modal {

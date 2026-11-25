@@ -40,6 +40,9 @@ export default function SurveyReviewModal({
   const [zoom, setZoom] = useState(false);
   const [candidate, setCandidate] = useState(form.candidateNo);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const viewerRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
   const pageRef = form.pages[pageIndex];
   const read = useMemo(
     () => pages.find((page) => page.id === pageRef?.pageId)?.read,
@@ -158,6 +161,41 @@ export default function SurveyReviewModal({
     }
   };
 
+  // Mouse drag-to-pan on the scan, like the answer-sheet review. Touch keeps
+  // the browser's native scrolling.
+  const startDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'mouse') return;
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+    dragRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      left: viewer.scrollLeft,
+      top: viewer.scrollTop,
+    };
+    setDragging(true);
+    viewer.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  };
+
+  const moveDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    const viewer = viewerRef.current;
+    if (!drag || !viewer) return;
+    viewer.scrollLeft = drag.left - (event.clientX - drag.x);
+    viewer.scrollTop = drag.top - (event.clientY - drag.y);
+    event.preventDefault();
+  };
+
+  const endDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    dragRef.current = null;
+    setDragging(false);
+    const viewer = viewerRef.current;
+    if (viewer?.hasPointerCapture(event.pointerId)) {
+      viewer.releasePointerCapture(event.pointerId);
+    }
+  };
+
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="覆核選科表">
       <div className="survey-review-modal">
@@ -204,7 +242,14 @@ export default function SurveyReviewModal({
                 {zoom ? '縮小' : '放大'}
               </button>
             </div>
-            <div className={`survey-canvas-wrap ${zoom ? 'zoomed' : ''}`}>
+            <div
+              ref={viewerRef}
+              className={`survey-canvas-wrap ${zoom ? 'zoomed' : ''} ${dragging ? 'dragging' : ''}`}
+              onPointerDown={startDrag}
+              onPointerMove={moveDrag}
+              onPointerUp={endDrag}
+              onPointerCancel={endDrag}
+            >
               {loading && (
                 <div className="survey-canvas-loading">
                   <Loader2 size={18} className="spin" /> 載入頁面…
