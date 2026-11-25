@@ -3,23 +3,14 @@ import { CalendarDays, ClipboardList, Plus, ScanLine, UploadCloud, X } from 'luc
 import { FORM_LEVELS, subjectGroups } from '../lib/subjects';
 import type { TaskKind } from '../types';
 
-export const SURVEY_SUBJECTS = [
-  '選科表（第一次）',
-  '選科表（第二次）',
-  '選科表（第三次）',
-] as const;
+export const SURVEY_SUBJECT = '中三選科表';
 
 interface TaskSetupModalProps {
   mode: 'new' | 'upload';
   initialFormLevel: string;
   initialSubject: string;
   onCancel: () => void;
-  onConfirm: (
-    formLevel: string,
-    subject: string,
-    kind: TaskKind,
-    surveyNumber: number,
-  ) => void;
+  onConfirm: (formLevel: string, subject: string, kind: TaskKind) => void;
 }
 
 export default function TaskSetupModal({
@@ -29,16 +20,8 @@ export default function TaskSetupModal({
   onCancel,
   onConfirm,
 }: TaskSetupModalProps) {
-  const surveyHint = SURVEY_SUBJECTS.some((item) => item === initialSubject);
+  const surveyHint = initialSubject.includes('選科表');
   const [kind, setKind] = useState<TaskKind>(surveyHint ? 'survey' : 'mcq');
-  const [surveyNumber, setSurveyNumber] = useState(
-    surveyHint
-      ? Math.max(
-          1,
-          SURVEY_SUBJECTS.indexOf(initialSubject as (typeof SURVEY_SUBJECTS)[number]) + 1,
-        )
-      : 1,
-  );
   const [formLevel, setFormLevel] = useState(
     surveyHint ? initialFormLevel || 'S3' : initialFormLevel,
   );
@@ -55,7 +38,6 @@ export default function TaskSetupModal({
   const groups = subjectGroups(formLevel);
   const subjects = groups.flatMap((group) => group.subjects);
   const keepCurrent = Boolean(subject) && !subjects.includes(subject);
-  const surveySubject = SURVEY_SUBJECTS[surveyNumber - 1];
   const ready = Boolean(formLevel && (kind === 'survey' || subject));
 
   const changeFormLevel = (value: string) => {
@@ -66,12 +48,7 @@ export default function TaskSetupModal({
 
   const confirm = () => {
     if (!ready) return;
-    onConfirm(
-      formLevel,
-      kind === 'survey' ? surveySubject : subject,
-      kind,
-      surveyNumber,
-    );
+    onConfirm(formLevel, kind === 'survey' ? SURVEY_SUBJECT : subject, kind);
   };
 
   return (
@@ -150,22 +127,7 @@ export default function TaskSetupModal({
               </select>
             </label>
 
-            {kind === 'survey' ? (
-              <label className="field">
-                <span>第幾次調查</span>
-                <select
-                  value={surveyNumber}
-                  onChange={(event) => setSurveyNumber(Number(event.target.value))}
-                  autoFocus
-                >
-                  {SURVEY_SUBJECTS.map((item, index) => (
-                    <option key={item} value={index + 1}>
-                      第{[...'一二三'][index]}次
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : (
+            {kind === 'mcq' && (
               <label className="field">
                 <span>科目</span>
                 <select
