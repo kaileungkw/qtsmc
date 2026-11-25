@@ -78,6 +78,8 @@ export interface TaskMeta {
   title: string;
   subject: string;
   formLevel: string;
+  /** Report date, used for the automatic school-year and term labels. */
+  date: string;
   sheetCount: number;
   questionCount: number;
   createdAt: number;

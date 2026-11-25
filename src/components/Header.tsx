@@ -1,5 +1,6 @@
 import { Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import type { TaskMeta } from '../types';
+import { academicPeriod } from '../lib/academic';
 
 interface HeaderProps {
   tasks: TaskMeta[];
@@ -11,11 +12,11 @@ interface HeaderProps {
 }
 
 function taskLabel(task: TaskMeta, index: number): string {
+  const prefix = academicPeriod(task.date || task.createdAt).prefix;
   const parts = [task.formLevel.trim(), task.subject.trim()].filter(Boolean);
-  if (parts.length) return parts.join(' · ');
+  if (parts.length) return [prefix, ...parts].join('_');
   const title = task.title.trim();
-  if (title) return title;
-  return `任務 ${index + 1}`;
+  return `${prefix}_${title || `任務 ${index + 1}`}`;
 }
 
 export default function Header({

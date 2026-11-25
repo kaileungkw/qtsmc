@@ -20,6 +20,7 @@ import {
   saveTaskSession,
 } from './lib/tasks';
 import { downloadBackup, parseBackupFile } from './lib/export';
+import { toDateInputValue } from './lib/academic';
 import { loadRoster, lookupRoster, type RosterData } from './lib/roster';
 import { applyRosterAndSuggestions } from './lib/assign';
 import type {
@@ -36,7 +37,7 @@ import type {
   TaskMeta,
 } from './types';
 
-const today = new Date().toISOString().slice(0, 10);
+const today = toDateInputValue();
 const DEFAULT_SETTINGS: Settings = {
   title: '',
   subject: '',
@@ -203,6 +204,7 @@ async function bootTasks(): Promise<BootResult> {
       );
       meta.sheetCount = legacy.sheetMeta.length;
       meta.questionCount = legacy.settings.questionCount || 0;
+      meta.date = legacy.settings.date || meta.date;
       meta.updatedAt = legacy.savedAt || Date.now();
       await saveTaskSession(id, legacy);
       const tasks = [meta];
@@ -361,6 +363,8 @@ export default function App() {
               ...DEFAULT_SETTINGS,
               title: active.title,
               subject: active.subject,
+              formLevel: active.formLevel,
+              date: active.date,
               questionCount: active.questionCount,
             });
           }
@@ -463,6 +467,7 @@ export default function App() {
         task.title === settings.title &&
         task.subject === settings.subject &&
         task.formLevel === settings.formLevel &&
+        task.date === settings.date &&
         task.sheetCount === sheets.length &&
         task.questionCount === settings.questionCount
       ) {
@@ -474,6 +479,7 @@ export default function App() {
         title: settings.title,
         subject: settings.subject,
         formLevel: settings.formLevel,
+        date: settings.date,
         sheetCount: sheets.length,
         questionCount: settings.questionCount,
         updatedAt: Date.now(),
@@ -485,6 +491,7 @@ export default function App() {
     settings.title,
     settings.subject,
     settings.formLevel,
+    settings.date,
     settings.questionCount,
     sheets.length,
   ]);
@@ -890,6 +897,7 @@ export default function App() {
                 title: fallback.title,
                 subject: fallback.subject,
                 formLevel: fallback.formLevel,
+                date: fallback.date,
                 questionCount: fallback.questionCount,
               }
             : DEFAULT_SETTINGS,
@@ -981,7 +989,7 @@ export default function App() {
         ...DEFAULT_SETTINGS,
         formLevel,
         subject,
-        date: new Date().toISOString().slice(0, 10),
+        date: meta.date,
       });
       setOverrides({});
       setKeyOverrides({});

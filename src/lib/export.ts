@@ -8,6 +8,7 @@ import type {
   StudentResult,
 } from '../types';
 import { displayAnswer } from './scoring';
+import { academicPeriod } from './academic';
 import {
   buildClassStats,
   buildGroupStats,
@@ -52,9 +53,13 @@ function safeName(value: string): string {
   );
 }
 
-/** e.g. S4_物理_報告 All in one */
-function reportFileBase(settings: Settings): string {
-  const parts = [settings.formLevel, settings.subject]
+/** e.g. 2627_T1_S4_物理_報告 All in one */
+export function reportFileBase(settings: Settings): string {
+  const parts = [
+    academicPeriod(settings.date).prefix,
+    settings.formLevel,
+    settings.subject,
+  ]
     .map((value) => value.trim().replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '_'))
     .filter(Boolean);
   return [...parts, '報告 All in one'].join('_');

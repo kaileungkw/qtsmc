@@ -19,7 +19,7 @@ import type {
   SheetOverrides,
   SourcePdf,
 } from '../types';
-import { exportCsvZip } from '../lib/export';
+import { exportCsvZip, reportFileBase } from '../lib/export';
 import { FORM_LEVELS, allSubjects, subjectGroups } from '../lib/subjects';
 import type { ToastKind } from './Toast';
 
@@ -62,13 +62,7 @@ export default function ExportPanel({
   const [busy, setBusy] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const invalidKeys = analysis.questions.filter((q) => !q.keyValid).length;
-  const fileBase = [
-    settings.formLevel.trim(),
-    settings.subject.trim(),
-    '報告 All in one',
-  ]
-    .filter(Boolean)
-    .join('_');
+  const fileBase = reportFileBase(settings);
   const ready =
     settings.questionCount > 0 && analysis.included.length > 0 && sheets.length > 0;
 

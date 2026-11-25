@@ -1,5 +1,6 @@
 import { del, get, set } from 'idb-keyval';
 import type { SavedSession, TaskMeta } from '../types';
+import { toDateInputValue } from './academic';
 
 const INDEX_KEY = 'qtsmc-tasks-v1';
 
@@ -20,6 +21,7 @@ export function createTaskMeta(
     title,
     subject,
     formLevel,
+    date: toDateInputValue(new Date(now)),
     sheetCount: 0,
     questionCount: 0,
     createdAt: now,
@@ -42,6 +44,10 @@ export function loadTaskIndex(): TaskIndex {
           title: typeof task.title === 'string' ? task.title : '',
           subject: typeof task.subject === 'string' ? task.subject : '',
           formLevel: typeof task.formLevel === 'string' ? task.formLevel : '',
+          date:
+            typeof task.date === 'string' && task.date
+              ? task.date
+              : toDateInputValue(new Date(Number(task.createdAt) || Date.now())),
           sheetCount: Number(task.sheetCount) || 0,
           questionCount: Number(task.questionCount) || 0,
         })),
