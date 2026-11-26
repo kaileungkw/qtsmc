@@ -1,5 +1,5 @@
 import { del, get, set } from 'idb-keyval';
-import type { SavedSession, TaskMeta } from '../types';
+import type { SavedSession, TaskKind, TaskMeta } from '../types';
 import { toDateInputValue } from './academic';
 
 const INDEX_KEY = 'qtsmc-tasks-v1';
@@ -14,10 +14,12 @@ export function createTaskMeta(
   title = '',
   subject = '',
   formLevel = '',
+  kind: TaskKind = 'mcq',
 ): TaskMeta {
   const now = Date.now();
   return {
     id,
+    kind,
     title,
     subject,
     formLevel,
@@ -41,6 +43,7 @@ export function loadTaskIndex(): TaskIndex {
         .filter((task) => task && typeof task.id === 'string' && task.id.length > 0)
         .map((task) => ({
           ...task,
+          kind: task.kind === 'survey' ? 'survey' : 'mcq',
           title: typeof task.title === 'string' ? task.title : '',
           subject: typeof task.subject === 'string' ? task.subject : '',
           formLevel: typeof task.formLevel === 'string' ? task.formLevel : '',
@@ -77,4 +80,9 @@ export async function saveTaskSession(id: string, session: SavedSession): Promis
 
 export async function deleteTaskSession(id: string): Promise<void> {
   await del(`qtsmc-task-session-${id}`);
+}
+
+/** Survey results live under their own key so MCQ and survey never collide. */
+export async function deleteSurveySession(id: string): Promise<void> {
+  await del(`qtsmc-survey-v1-${id}`);
 }

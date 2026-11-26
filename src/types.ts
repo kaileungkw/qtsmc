@@ -73,8 +73,12 @@ export interface Detection {
   elapsedMs: number;
 }
 
+export type TaskKind = 'mcq' | 'survey';
+
 export interface TaskMeta {
   id: string;
+  /** Defaults to the MCQ answer-sheet task for tasks created before v2.12. */
+  kind?: TaskKind;
   title: string;
   subject: string;
   formLevel: string;

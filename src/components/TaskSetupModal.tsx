@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
-import { CalendarDays, Plus, UploadCloud, X } from 'lucide-react';
+import { CalendarDays, ClipboardList, Plus, UploadCloud, X } from 'lucide-react';
 import { FORM_LEVELS, subjectGroups } from '../lib/subjects';
+import type { TaskKind } from '../types';
+import { SURVEY_SUBJECT } from '../lib/survey';
 
 interface TaskSetupModalProps {
   mode: 'new' | 'upload';
   initialFormLevel: string;
   initialSubject: string;
   onCancel: () => void;
-  onConfirm: (formLevel: string, subject: string) => void;
+  onConfirm: (formLevel: string, subject: string, kind: TaskKind) => void;
 }
 
 export default function TaskSetupModal({
@@ -18,7 +20,9 @@ export default function TaskSetupModal({
   onConfirm,
 }: TaskSetupModalProps) {
   const [formLevel, setFormLevel] = useState(initialFormLevel);
-  const [subject, setSubject] = useState(initialSubject);
+  const [subject, setSubject] = useState(
+    initialSubject.includes('選科表') ? '' : initialSubject,
+  );
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -52,7 +56,7 @@ export default function TaskSetupModal({
             <span className="topbar-kicker">
               <CalendarDays size={13} /> {mode === 'new' ? 'NEW TASK' : 'SET UP'}
             </span>
-            <strong>{mode === 'new' ? '建立新任務' : '先設定年級及科目'}</strong>
+            <strong>{mode === 'new' ? '建立新任務' : '先設定任務'}</strong>
           </div>
           <button className="icon-btn close" onClick={onCancel} aria-label="關閉">
             <X size={18} />
@@ -108,20 +112,37 @@ export default function TaskSetupModal({
           <p className="setup-note">
             及格線會按年級自動設定：S1–S3 為 50%，S4–S6 為 40%。之後可在匯出頁更改。
           </p>
+          {mode === 'new' && (
+            <p className="setup-note survey-setup-note">
+              中三選科表：建立後<strong>先上載學校原本的空白表格 PDF</strong>，再上載掃描版本。
+            </p>
+          )}
         </div>
 
         <div className="setup-actions">
-          <button className="btn ghost" onClick={onCancel}>
-            取消
-          </button>
-          <button
-            className="btn primary"
-            onClick={() => onConfirm(formLevel, subject)}
-            disabled={!ready}
-          >
-            {mode === 'new' ? <Plus size={15} /> : <UploadCloud size={15} />}
-            {mode === 'new' ? '建立任務' : '繼續上載'}
-          </button>
+          {mode === 'new' && (
+            <button
+              className="btn ghost survey-create-btn"
+              onClick={() => onConfirm('S3', SURVEY_SUBJECT, 'survey')}
+              title="中三選科表：先上載空白 PDF 原檔，再上載掃描版本"
+            >
+              <ClipboardList size={15} />
+              中三選科表（測試）
+            </button>
+          )}
+          <div className="setup-actions-right">
+            <button className="btn ghost" onClick={onCancel}>
+              取消
+            </button>
+            <button
+              className="btn primary"
+              onClick={() => onConfirm(formLevel, subject, 'mcq')}
+              disabled={!ready}
+            >
+              {mode === 'new' ? <Plus size={15} /> : <UploadCloud size={15} />}
+              {mode === 'new' ? '建立任務' : '繼續上載'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

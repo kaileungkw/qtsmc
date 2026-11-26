@@ -14,7 +14,7 @@ export interface PdfPageImage {
  * frame detector without correction. A small projection search over ±3° is
  * cheap and robust; the result is the angle of the lines in the image.
  */
-function estimateSkew(canvas: HTMLCanvasElement): number {
+export function estimateSkew(canvas: HTMLCanvasElement): number {
   const target = 400;
   const scale = target / canvas.width;
   const sw = target;
@@ -61,7 +61,7 @@ function estimateSkew(canvas: HTMLCanvasElement): number {
   return Math.abs(bestAngle) < 0.35 ? 0 : bestAngle;
 }
 
-function rotateCanvas(canvas: HTMLCanvasElement, angle: number): HTMLCanvasElement {
+export function rotateCanvas(canvas: HTMLCanvasElement, angle: number): HTMLCanvasElement {
   const radians = (angle * Math.PI) / 180;
   const cos = Math.abs(Math.cos(radians));
   const sin = Math.abs(Math.sin(radians));
