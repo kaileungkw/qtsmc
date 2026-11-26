@@ -15,11 +15,13 @@ import {
 import type { RosterData } from '../lib/roster';
 import {
   formNeedsReview,
+  surveyBlankKeys,
   type SurveyForm,
   type SurveyLogicalPage,
   type SurveyTemplate,
 } from '../lib/survey';
 import SurveyReviewPageCanvas from './SurveyReviewPageCanvas';
+import { createSurveyReviewLoader } from '../lib/surveyPdf';
 
 interface SurveyReviewModalProps {
   form: SurveyForm;
@@ -66,7 +68,7 @@ export default function SurveyReviewModal({
   const [enhanceView, setEnhanceView] = useState(true);
   const [candidate, setCandidate] = useState(form.candidateNo);
   const [onlyReview, setOnlyReview] = useState(
-    () => new Set([...form.ambiguous, ...(form.faint ?? [])]).size > 0,
+    () => new Set([...form.ambiguous, ...(form.faint ?? []), ...surveyBlankKeys(form, template)]).size > 0,
   );
   const viewerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -76,10 +78,27 @@ export default function SurveyReviewModal({
   const scrollFrame = useRef<number | null>(null);
   const focusRef = useRef<FocusRequest | null>(null);
   const [dragging, setDragging] = useState(false);
+  const loader = useMemo(() => createSurveyReviewLoader(), []);
+  const disposeTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (disposeTimer.current !== null) {
+      window.clearTimeout(disposeTimer.current);
+      disposeTimer.current = null;
+    }
+    return () => {
+      // StrictMode probes an effect cleanup and immediately remounts. Give the
+      // real mount a chance to cancel disposal; actual modal closure still
+      // destroys every PDF and clears the page cache on the next tick.
+      disposeTimer.current = window.setTimeout(() => {
+        void loader.dispose();
+      }, 0);
+    };
+  }, [loader]);
 
   const issueKeys = useMemo(
-    () => new Set([...form.ambiguous, ...(form.faint ?? [])]),
-    [form.ambiguous, form.faint],
+    () => new Set([...form.ambiguous, ...(form.faint ?? []), ...surveyBlankKeys(form, template)]),
+    [form.ambiguous, form.faint, form.values, template],
   );
   const issueCount = issueKeys.size;
   const formFlags = useMemo(
@@ -108,7 +127,7 @@ export default function SurveyReviewModal({
     setCandidate(form.candidateNo);
     setPageIndex(0);
     setLoadThrough(Math.min(1, Math.max(0, form.pages.length - 1)));
-    setOnlyReview(new Set([...form.ambiguous, ...(form.faint ?? [])]).size > 0);
+    setOnlyReview(new Set([...form.ambiguous, ...(form.faint ?? []), ...surveyBlankKeys(form, template)]).size > 0);
     focusRef.current = null;
     window.requestAnimationFrame(() => {
       viewerRef.current?.scrollTo({ top: 0, left: 0 });
@@ -457,6 +476,7 @@ export default function SurveyReviewModal({
                         shouldLoad={index <= loadThrough}
                         enhanced={enhanceView}
                         showMarkers={!cleanView}
+                        loader={loader}
                         onRendered={handleRendered}
                       />
                     </div>
@@ -569,12 +589,13 @@ export default function SurveyReviewModal({
                       const value = form.values[grid.id]?.[row] ?? null;
                       const isDouble = form.ambiguous.includes(key);
                       const isFaint = form.faint?.includes(key) ?? false;
+                      const isBlank = issueKeys.has(key) && !isDouble && !isFaint && value === null;
                       const choices = form.doubleChoices?.[key] ?? [];
                       const display = grid.codes?.[row] ? `${grid.codes[row]} ${label}` : label;
                       return (
                         <div
                           key={key}
-                          className={`survey-review-item ${isDouble ? 'double' : ''} ${isFaint ? 'faint' : ''}`}
+                          className={`survey-review-item ${isDouble ? 'double' : ''} ${isFaint || isBlank ? 'faint' : ''}`}
                           data-issue-key={key}
                         >
                           <button
@@ -588,6 +609,7 @@ export default function SurveyReviewModal({
                               <small>雙填{choices.length ? `：${choices.join('、')}` : ''}</small>
                             )}
                             {!isDouble && isFaint && <small>淡色</small>}
+                            {isBlank && <small>未填</small>}
                           </button>
                           {grid.mode === 'single' ? (
                             <input
@@ -648,7 +670,7 @@ export default function SurveyReviewModal({
           <span className="survey-review-finish">
             {form.reviewed ? (
               <span className="survey-review-ok"><Check size={13} /> 已標記覆核完成</span>
-            ) : formNeedsReview(form) ? (
+            ) : formNeedsReview(form, template) ? (
               <span className="survey-review-warning">
                 <AlertTriangle size={13} /> 仍有 {issueCount + formFlags.length} 項需留意
               </span>

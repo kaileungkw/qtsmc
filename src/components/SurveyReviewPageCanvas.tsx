@@ -6,7 +6,7 @@ import type {
   SurveyPageRead,
   SurveyTemplatePage,
 } from '../lib/survey';
-import { renderSurveyReviewPage } from '../lib/surveyPdf';
+import type { SurveyReviewLoader } from '../lib/surveyPdf';
 import { enhanceCanvasContrast } from '../lib/canvasEnhance';
 
 interface SurveyReviewPageCanvasProps {
@@ -18,6 +18,7 @@ interface SurveyReviewPageCanvasProps {
   shouldLoad: boolean;
   enhanced: boolean;
   showMarkers: boolean;
+  loader: SurveyReviewLoader;
   onRendered: (pageId: string) => void;
 }
 
@@ -38,6 +39,7 @@ export default function SurveyReviewPageCanvas({
   shouldLoad,
   enhanced,
   showMarkers,
+  loader,
   onRendered,
 }: SurveyReviewPageCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -55,8 +57,7 @@ export default function SurveyReviewPageCanvas({
     }
     setLoading(true);
     setError('');
-    const file = new File([scan.blob], scan.name, { type: scan.blob.type || '' });
-    renderSurveyReviewPage(file, pageRef.pageNo, pageRef.half)
+    loader.render(scan, pageRef.pageNo, pageRef.half)
       .then((image) => {
         if (!cancelled) setSource(image);
       })
@@ -69,7 +70,7 @@ export default function SurveyReviewPageCanvas({
     return () => {
       cancelled = true;
     };
-  }, [attempt, pageRef.half, pageRef.pageNo, scan, shouldLoad, source]);
+  }, [attempt, loader, pageRef.half, pageRef.pageNo, scan, shouldLoad, source]);
 
   useEffect(() => {
     if (!source) return;
