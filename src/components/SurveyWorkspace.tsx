@@ -38,6 +38,13 @@ import {
   readSurveyTextPages,
 } from '../lib/surveyPdf';
 import { exportSurveyXlsx, exportSurveyZip } from '../lib/surveyExport';
+import {
+  surveyClassScopes,
+  surveyGroupFirstChoices,
+  surveyMissingByClass,
+  surveyScopeForms,
+  surveyScopeLabel,
+} from '../lib/surveyAnalysis';
 import type { ToastKind } from './Toast';
 import SurveyReviewModal from './SurveyReviewModal';
 
@@ -125,6 +132,7 @@ export default function SurveyWorkspace({
   } | null>(null);
   const [filter, setFilter] = useState<'all' | 'review' | 'reviewed' | SurveyIssueKind>('all');
   const [view, setView] = useState<'results' | 'stats'>('results');
+  const [analysisScope, setAnalysisScope] = useState('all');
   const [reviewForm, setReviewForm] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [exportKind, setExportKind] = useState<'xlsx' | 'zip' | null>(null);
@@ -507,6 +515,25 @@ export default function SurveyWorkspace({
     [filter, forms, template],
   );
 
+  const classScopes = useMemo(() => surveyClassScopes(forms), [forms]);
+  const missingGroups = useMemo(() => surveyMissingByClass(forms, roster), [forms, roster]);
+  const missingCount = useMemo(
+    () => missingGroups.reduce((sum, group) => sum + group.entries.length, 0),
+    [missingGroups],
+  );
+  const analysisForms = useMemo(
+    () => surveyScopeForms(forms, analysisScope),
+    [forms, analysisScope],
+  );
+  const analysisGroups = useMemo(
+    () => (template ? surveyGroupFirstChoices(analysisForms, template) : []),
+    [analysisForms, template],
+  );
+
+  useEffect(() => {
+    if (!classScopes.includes(analysisScope)) setAnalysisScope('all');
+  }, [analysisScope, classScopes]);
+
   const contentGrids = useMemo(() => {
     if (!template) return [];
     return template.pages.flatMap((page) =>
@@ -533,7 +560,7 @@ export default function SurveyWorkspace({
     () =>
       contentGrids.flatMap(({ grid }) =>
         grid.rows.map((label, index) => {
-          const values = forms
+          const values = analysisForms
             .map((form) => form.values[grid.id]?.[index] ?? null)
             .filter((value): value is number => value !== null);
           const code = grid.codes?.[index];
@@ -557,7 +584,7 @@ export default function SurveyWorkspace({
           };
         }),
       ),
-    [contentGrids, forms, template],
+    [contentGrids, analysisForms, template],
   );
 
   const selectedForm = forms.find((form) => form.id === reviewForm) ?? null;
@@ -590,6 +617,7 @@ export default function SurveyWorkspace({
         date: task.date,
         formLevel: task.formLevel,
         subject: `${task.subject}（${surveyRoundLabel(task.date)}）`,
+        roster,
       };
       if (kind === 'xlsx') await exportSurveyXlsx(input);
       else await exportSurveyZip(input);
@@ -599,7 +627,7 @@ export default function SurveyWorkspace({
     } finally {
       setExportKind(null);
     }
-  }, [blankName, blankPdf, exportKind, forms, onToast, scans, task.date, task.formLevel, task.subject, template]);
+  }, [blankName, blankPdf, exportKind, forms, onToast, roster, scans, task.date, task.formLevel, task.subject, template]);
 
   if (!hydrated) {
     return (
@@ -980,6 +1008,33 @@ export default function SurveyWorkspace({
             </article>
           </div>
 
+          {!roster ? (
+            <p className="survey-missing-warning" role="status">
+              全校名單未載入，暫未能核對缺交學生。
+            </p>
+          ) : missingCount > 0 ? (
+            <details className="survey-missing">
+              <summary>
+                缺交名單 {missingCount} <span>按目前名單逐班核對</span>
+              </summary>
+              <div className="survey-missing-list">
+                {missingGroups.map((group) => (
+                  <section key={group.className}>
+                    <strong>{group.className} · 缺 {group.entries.length} 人</strong>
+                    <ul>
+                      {group.entries.map((entry) => (
+                        <li key={entry.examId}>
+                          <code>{entry.examId}</code> {entry.name}
+                          <small> / {String(entry.num).padStart(2, '0')}</small>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ))}
+              </div>
+            </details>
+          ) : null}
+
           <div className="survey-toolbar">
             <div className="survey-view-tabs">
               <button
@@ -1039,6 +1094,51 @@ export default function SurveyWorkspace({
           </div>
 
           {view === 'stats' ? (
+            <>
+              <div className="survey-analysis-controls">
+                <label className="survey-scope-select">
+                  <span>分析範圍</span>
+                  <select
+                    value={analysisScope}
+                    onChange={(event) => setAnalysisScope(event.target.value)}
+                    aria-label="分析範圍"
+                  >
+                    {classScopes.map((scope) => (
+                      <option key={scope} value={scope}>{surveyScopeLabel(scope)}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="survey-choice-groups">
+                {analysisGroups.filter((group) => group.page === 2).map((group) => (
+                  <section key={group.grid.id} className="survey-choice-group">
+                    <h3>
+                      {shortGridLabel(template!, group.grid)} · {group.grid.rows.length} 選 1
+                    </h3>
+                    <table className="survey-choice-table">
+                      <thead>
+                        <tr><th>科目</th><th>人數</th><th>百分比</th></tr>
+                      </thead>
+                      <tbody>
+                        {group.rows.map((row) => (
+                          <tr key={row.row}>
+                            <td>{row.code ? `${row.code} ` : ''}{row.label}</td>
+                            <td>{row.count}</td>
+                            <td>{row.percent}%</td>
+                          </tr>
+                        ))}
+                        <tr className="undetermined">
+                          <td>第 1 志願未確定</td>
+                          <td>{group.undetermined}</td>
+                          <td>{group.total ? Math.round((group.undetermined / group.total) * 1000) / 10 : 0}%</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </section>
+                ))}
+              </div>
+
             <div className="survey-stats-wrap">
               <table className="survey-stats-table">
                 <thead>
@@ -1078,6 +1178,7 @@ export default function SurveyWorkspace({
                 </tbody>
               </table>
             </div>
+            </>
           ) : (
             <>
           <div className="survey-table-wrap">

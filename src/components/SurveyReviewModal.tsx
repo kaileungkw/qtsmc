@@ -16,6 +16,7 @@ import type { RosterData } from '../lib/roster';
 import {
   formNeedsReview,
   surveyBlankKeys,
+  surveyDuplicateRankKeys,
   type SurveyForm,
   type SurveyLogicalPage,
   type SurveyTemplate,
@@ -68,7 +69,7 @@ export default function SurveyReviewModal({
   const [enhanceView, setEnhanceView] = useState(true);
   const [candidate, setCandidate] = useState(form.candidateNo);
   const [onlyReview, setOnlyReview] = useState(
-    () => new Set([...form.ambiguous, ...(form.faint ?? []), ...surveyBlankKeys(form, template)]).size > 0,
+    () => new Set([...form.ambiguous, ...(form.faint ?? []), ...surveyBlankKeys(form, template), ...surveyDuplicateRankKeys(form, template)]).size > 0,
   );
   const viewerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -96,9 +97,18 @@ export default function SurveyReviewModal({
     };
   }, [loader]);
 
+  const duplicateRankKeys = useMemo(
+    () => new Set(surveyDuplicateRankKeys(form, template)),
+    [form.values, form.ambiguous, template],
+  );
   const issueKeys = useMemo(
-    () => new Set([...form.ambiguous, ...(form.faint ?? []), ...surveyBlankKeys(form, template)]),
-    [form.ambiguous, form.faint, form.values, template],
+    () => new Set([
+      ...form.ambiguous,
+      ...(form.faint ?? []),
+      ...surveyBlankKeys(form, template),
+      ...duplicateRankKeys,
+    ]),
+    [form.ambiguous, form.faint, form.values, template, duplicateRankKeys],
   );
   const issueCount = issueKeys.size;
   const formFlags = useMemo(
@@ -127,7 +137,7 @@ export default function SurveyReviewModal({
     setCandidate(form.candidateNo);
     setPageIndex(0);
     setLoadThrough(Math.min(1, Math.max(0, form.pages.length - 1)));
-    setOnlyReview(new Set([...form.ambiguous, ...(form.faint ?? []), ...surveyBlankKeys(form, template)]).size > 0);
+    setOnlyReview(new Set([...form.ambiguous, ...(form.faint ?? []), ...surveyBlankKeys(form, template), ...surveyDuplicateRankKeys(form, template)]).size > 0);
     focusRef.current = null;
     window.requestAnimationFrame(() => {
       viewerRef.current?.scrollTo({ top: 0, left: 0 });
@@ -588,6 +598,7 @@ export default function SurveyReviewModal({
                       const key = `${grid.id}:${row}`;
                       const value = form.values[grid.id]?.[row] ?? null;
                       const isDouble = form.ambiguous.includes(key);
+                      const isRank = duplicateRankKeys.has(key);
                       const isFaint = form.faint?.includes(key) ?? false;
                       const isBlank = issueKeys.has(key) && !isDouble && !isFaint && value === null;
                       const choices = form.doubleChoices?.[key] ?? [];
@@ -595,7 +606,7 @@ export default function SurveyReviewModal({
                       return (
                         <div
                           key={key}
-                          className={`survey-review-item ${isDouble ? 'double' : ''} ${isFaint || isBlank ? 'faint' : ''}`}
+                          className={`survey-review-item ${isDouble ? 'double' : ''} ${isFaint || isBlank || isRank ? 'faint' : ''}`}
                           data-issue-key={key}
                         >
                           <button
@@ -610,6 +621,7 @@ export default function SurveyReviewModal({
                             )}
                             {!isDouble && isFaint && <small>淡色</small>}
                             {isBlank && <small>未填</small>}
+                            {isRank && <small>重複志願：{value}</small>}
                           </button>
                           {grid.mode === 'single' ? (
                             <input
