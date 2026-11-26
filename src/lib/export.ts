@@ -9,6 +9,7 @@ import type {
 } from '../types';
 import { displayAnswer } from './scoring';
 import { academicPeriod } from './academic';
+import { subjectFileToken } from './subjects';
 import {
   buildClassStats,
   buildGroupStats,
@@ -53,20 +54,35 @@ function safeName(value: string): string {
   );
 }
 
-/** e.g. 2627_T1_S4_物理_報告 All in one */
-export function reportFileBase(settings: {
+interface ExportNameSettings {
   date: string;
   formLevel: string;
   subject: string;
-}): string {
-  const parts = [
+}
+
+function exportFilePrefix(settings: ExportNameSettings): string {
+  return [
     academicPeriod(settings.date).prefix,
     settings.formLevel,
-    settings.subject,
+    subjectFileToken(settings.subject),
   ]
     .map((value) => value.trim().replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '_'))
-    .filter(Boolean);
-  return [...parts, '報告 All in one'].join('_');
+    .filter(Boolean)
+    .join('_');
+}
+
+/** e.g. 2627_T1_S4_Phy_報告 All in one */
+export function reportFileBase(settings: ExportNameSettings): string {
+  return [exportFilePrefix(settings), '報告 All in one'].filter(Boolean).join('_');
+}
+
+/** Keep one unnumbered scan name; number every scan when there are several. */
+export function sourcePdfFileNames(settings: ExportNameSettings, count: number): string[] {
+  const base = `${exportFilePrefix(settings)}_scan`;
+  return Array.from({ length: count }, (_, index) => {
+    const suffix = count > 1 ? `_${String(index + 1).padStart(2, '0')}` : '';
+    return `${base}${suffix}.pdf`;
+  });
 }
 
 function download(blob: Blob, fileName: string): void {
@@ -1490,21 +1506,11 @@ export async function exportCsvZip(ctx: ExportContext): Promise<void> {
   if (xlsxBlob) {
     zip.file(`${reportFileBase(settings)}.xlsx`, xlsxBlob);
   }
-  const usedPdfNames = new Set<string>();
-  for (const pdf of ctx.sourcePdfs ?? []) {
-    const safePdfName = (pdf.name || '答題紙.pdf').replace(/[\\/]/g, '_');
-    let name = safePdfName;
-    if (usedPdfNames.has(name)) {
-      const dot = safePdfName.lastIndexOf('.');
-      const stem = dot > 0 ? safePdfName.slice(0, dot) : safePdfName;
-      const ext = dot > 0 ? safePdfName.slice(dot) : '';
-      let index = 2;
-      while (usedPdfNames.has(`${stem} (${index})${ext}`)) index++;
-      name = `${stem} (${index})${ext}`;
-    }
-    usedPdfNames.add(name);
-    zip.file(name, pdf.blob);
-  }
+  const sourcePdfs = ctx.sourcePdfs ?? [];
+  const pdfNames = sourcePdfFileNames(settings, sourcePdfs.length);
+  sourcePdfs.forEach((pdf, index) => {
+    zip.file(pdfNames[index], pdf.blob);
+  });
 
   const blob = await zip.generateAsync({ type: 'blob' });
   download(blob, `${reportFileBase(settings)}.zip`);
