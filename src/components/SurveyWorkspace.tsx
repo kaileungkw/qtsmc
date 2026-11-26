@@ -82,6 +82,8 @@ export default function SurveyWorkspace({
   const [template, setTemplate] = useState<SurveyTemplate | null>(null);
   const [templateBusy, setTemplateBusy] = useState(false);
   const [templateError, setTemplateError] = useState('');
+  const [templateDragging, setTemplateDragging] = useState(false);
+  const [scanDragging, setScanDragging] = useState(false);
   const [blankName, setBlankName] = useState('');
   const [blankPdf, setBlankPdf] = useState<Blob | null>(null);
   const [scans, setScans] = useState<{ name: string; blob: Blob }[]>([]);
@@ -601,6 +603,24 @@ export default function SurveyWorkspace({
           </p>
         )}
 
+        <div
+          className={`survey-template-drop ${templateDragging ? 'dragging' : ''}`}
+          onDragEnter={(event) => {
+            event.preventDefault();
+            if (!templateBusy) setTemplateDragging(true);
+          }}
+          onDragOver={(event) => {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'copy';
+          }}
+          onDragLeave={() => setTemplateDragging(false)}
+          onDrop={(event) => {
+            event.preventDefault();
+            setTemplateDragging(false);
+            const file = event.dataTransfer.files[0];
+            if (!templateBusy && file) void loadTemplate(file);
+          }}
+        >
         {template ? (
           <div className="survey-template-summary">
             <div className="survey-template-name">
@@ -649,6 +669,7 @@ export default function SurveyWorkspace({
             <span>學校產生的原稿（有文字層），例如「2526 Subject_Preference_Survey1」</span>
           </button>
         )}
+        </div>
       </section>
 
       <section className="panel survey-panel">
@@ -679,11 +700,22 @@ export default function SurveyWorkspace({
         </div>
 
         <div
-          className={`dropzone survey-dropzone ${scans.length ? 'compact' : ''}`}
+          className={`dropzone survey-dropzone ${scans.length ? 'compact' : ''} ${
+            scanDragging ? 'dragging' : ''
+          }`}
           onClick={() => !processing && scanInput.current?.click()}
-          onDragOver={(event) => event.preventDefault()}
+          onDragEnter={(event) => {
+            event.preventDefault();
+            if (!processing) setScanDragging(true);
+          }}
+          onDragOver={(event) => {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'copy';
+          }}
+          onDragLeave={() => setScanDragging(false)}
           onDrop={(event) => {
             event.preventDefault();
+            setScanDragging(false);
             if (!processing) addScans(Array.from(event.dataTransfer.files));
           }}
           role="button"
