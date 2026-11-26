@@ -22,6 +22,10 @@ import {
   normalizeSurveyForms,
   syncDuplicateCandidateFlags,
   surveyGridIssueFlag,
+  surveyIssueKinds,
+  SURVEY_ISSUE_LABELS,
+  SURVEY_ISSUE_ORDER,
+  type SurveyIssueKind,
   type SurveyForm,
   type SurveyLogicalPage,
   type SurveyTemplate,
@@ -33,7 +37,7 @@ import {
   isSurveyScanPdf,
   readSurveyTextPages,
 } from '../lib/surveyPdf';
-import { exportSurveyZip } from '../lib/surveyExport';
+import { exportSurveyXlsx, exportSurveyZip } from '../lib/surveyExport';
 import type { ToastKind } from './Toast';
 import SurveyReviewModal from './SurveyReviewModal';
 
@@ -75,6 +79,24 @@ function initials(name: string): string {
   return name.trim().slice(0, 1) || '?';
 }
 
+function SurveyStatusTags({ form, template }: { form: SurveyForm; template: SurveyTemplate }) {
+  const issues = surveyIssueKinds(form, template);
+  return (
+    <span className="survey-status-tags">
+      {form.reviewed && (
+        <span className="survey-badge done"><Check size={11} /> 覆核完成</span>
+      )}
+      {issues.map((kind) => (
+        <span key={kind} className={`survey-badge issue ${kind}`}>
+          {kind !== 'unnamed' && <AlertTriangle size={10} />}
+          {SURVEY_ISSUE_LABELS[kind]}
+        </span>
+      ))}
+      {!form.reviewed && issues.length === 0 && <span className="survey-badge ok">已讀取</span>}
+    </span>
+  );
+}
+
 export default function SurveyWorkspace({
   task,
   roster,
@@ -101,11 +123,11 @@ export default function SurveyWorkspace({
     half: string;
     phase: string;
   } | null>(null);
-  const [filter, setFilter] = useState<'all' | 'review' | 'reviewed'>('all');
+  const [filter, setFilter] = useState<'all' | 'review' | 'reviewed' | SurveyIssueKind>('all');
   const [view, setView] = useState<'results' | 'stats'>('results');
   const [reviewForm, setReviewForm] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
-  const [exporting, setExporting] = useState(false);
+  const [exportKind, setExportKind] = useState<'xlsx' | 'zip' | null>(null);
   const templateInput = useRef<HTMLInputElement>(null);
   const scanInput = useRef<HTMLInputElement>(null);
   const saveTimer = useRef<number | null>(null);
@@ -380,7 +402,7 @@ export default function SurveyWorkspace({
         pages: collected,
         forms: assembled,
       } satisfies SurveySavedState).catch(() => undefined);
-      const review = assembled.filter((form) => formNeedsReview(form)).length;
+      const review = assembled.filter((form) => formNeedsReview(form, template!)).length;
       if (assembled.length) {
         window.setTimeout(() => {
           document
@@ -457,20 +479,32 @@ export default function SurveyWorkspace({
   );
 
   const counts = useMemo(() => {
-    const review = forms.filter((form) => formNeedsReview(form)).length;
+    const review = forms.filter((form) => formNeedsReview(form, template!)).length;
     const reviewed = forms.filter((form) => form.reviewed).length;
     const named = forms.filter((form) => form.name).length;
     return { all: forms.length, review, reviewed, named };
-  }, [forms]);
+  }, [forms, template]);
+
+  const issueCounts = useMemo(
+    () =>
+      Object.fromEntries(
+        SURVEY_ISSUE_ORDER.map((kind) => [
+          kind,
+          forms.filter((form) => surveyIssueKinds(form, template!).includes(kind)).length,
+        ]),
+      ) as Record<SurveyIssueKind, number>,
+    [forms, template],
+  );
 
   const visible = useMemo(
     () =>
       forms.filter((form) => {
-        if (filter === 'review') return formNeedsReview(form);
+        if (filter === 'review') return formNeedsReview(form, template!);
         if (filter === 'reviewed') return form.reviewed;
+        if (filter !== 'all') return surveyIssueKinds(form, template!).includes(filter);
         return true;
       }),
-    [filter, forms],
+    [filter, forms, template],
   );
 
   const contentGrids = useMemo(() => {
@@ -544,27 +578,28 @@ export default function SurveyWorkspace({
   const done = forms.length > 0;
   const scanPageCount = pages.filter((page) => !page.blank).length;
 
-  const doExport = useCallback(async () => {
-    if (!template || !forms.length || exporting) return;
-    setExporting(true);
+  const doExport = useCallback(async (kind: 'xlsx' | 'zip') => {
+    if (!template || !forms.length || exportKind) return;
+    setExportKind(kind);
     try {
-      await exportSurveyZip({
+      const input = {
         template,
         forms,
         scans,
-        blank:
-          blankName && blankPdf ? { name: blankName, blob: blankPdf } : undefined,
+        blank: blankName && blankPdf ? { name: blankName, blob: blankPdf } : undefined,
         date: task.date,
         formLevel: task.formLevel,
         subject: `${task.subject}（${surveyRoundLabel(task.date)}）`,
-      });
-      onToast('已下載選科表報告。', 'success');
+      };
+      if (kind === 'xlsx') await exportSurveyXlsx(input);
+      else await exportSurveyZip(input);
+      onToast(kind === 'xlsx' ? '已下載 XLSX 報告（不含掃描 PDF）。' : '已下載完整備份 ZIP。', 'success');
     } catch {
       onToast('匯出失敗，請再試一次。', 'error');
     } finally {
-      setExporting(false);
+      setExportKind(null);
     }
-  }, [exporting, forms, onToast, scans, task.date, task.formLevel, task.subject, template]);
+  }, [blankName, blankPdf, exportKind, forms, onToast, scans, task.date, task.formLevel, task.subject, template]);
 
   if (!hydrated) {
     return (
@@ -899,14 +934,23 @@ export default function SurveyWorkspace({
                 姓名由考生號碼配對全校名單。
               </p>
             </div>
-            <div className="panel-head-meta">
+            <div className="panel-head-meta survey-export-actions">
               <button
                 className="btn primary export-btn"
-                onClick={() => void doExport()}
-                disabled={exporting}
+                onClick={() => void doExport('xlsx')}
+                disabled={exportKind !== null}
               >
-                {exporting ? <Loader2 size={15} className="spin" /> : <Download size={15} />}
-                所有報告及 PDF (.zip)
+                {exportKind === 'xlsx' ? <Loader2 size={15} className="spin" /> : <Download size={15} />}
+                下載 XLSX
+              </button>
+              <button
+                className="btn ghost export-backup-btn"
+                onClick={() => void doExport('zip')}
+                disabled={exportKind !== null}
+                title="包含 XLSX、CSV、空白表格及原始掃描 PDF"
+              >
+                {exportKind === 'zip' ? <Loader2 size={15} className="spin" /> : <FileText size={15} />}
+                完整備份 ZIP
               </button>
             </div>
           </div>
@@ -927,7 +971,7 @@ export default function SurveyWorkspace({
             <article className="stat-card">
               <span className="stat-label">需覆核</span>
               <strong className="stat-value">{counts.review}</strong>
-              <span className="stat-note">雙填、淡色或缺頁</span>
+              <span className="stat-note">雙填、未填、身份或頁面問題</span>
             </article>
             <article className="stat-card">
               <span className="stat-label">覆核完成</span>
@@ -966,6 +1010,18 @@ export default function SurveyWorkspace({
                 >
                   需覆核 {counts.review}
                 </button>
+              )}
+              {SURVEY_ISSUE_ORDER.map((kind) =>
+                issueCounts[kind] > 0 ? (
+                  <button
+                    key={kind}
+                    className={`chip ${filter === kind ? 'active' : ''}`}
+                    onClick={() => setFilter(kind)}
+                    title={`${SURVEY_ISSUE_LABELS[kind]}：${issueCounts[kind]} 份；同一份表可屬於多個分類`}
+                  >
+                    {SURVEY_ISSUE_LABELS[kind]} {issueCounts[kind]}
+                  </button>
+                ) : null,
               )}
               {counts.reviewed > 0 && (
                 <button
@@ -1041,52 +1097,33 @@ export default function SurveyWorkspace({
               </colgroup>
               <thead>
                 <tr>
-                  <th rowSpan={2} className="sticky survey-name-col">
-                    學生
-                  </th>
-                  <th rowSpan={2} className="survey-id-col">
-                    考生號碼
-                  </th>
-                  {contentGrids.map(({ page, grid }) => (
-                    <th key={grid.id} colSpan={grid.rows.length} className="survey-group-head">
-                      <span>{shortGridLabel(template!, grid)}</span>
-                      <small>{grid.title}</small>
-                    </th>
-                  ))}
-                  <th rowSpan={2} className="survey-status-col">
-                    狀態
-                  </th>
-                </tr>
-                <tr>
+                  <th className="sticky survey-name-col">學生</th>
+                  <th className="survey-id-col">考生號碼</th>
                   {contentGrids.flatMap(({ grid }) =>
-                    grid.rows.map((label, index) => (
-                      <th
-                        key={`${grid.id}-${index}`}
-                        className="survey-subject-head"
-                        title={
-                          grid.mode === 'single' && grid.codes?.[index]
-                            ? `${grid.codes[index]} ${label}`
-                            : label
-                        }
-                      >
-                        {grid.mode === 'single' && grid.codes?.[index] ? (
-                          <>
-                            <span className="survey-apl-code">{grid.codes[index]}</span>
-                            <small>{label}</small>
-                          </>
-                        ) : (
-                          label
-                        )}
-                      </th>
-                    )),
+                    grid.rows.map((label, index) => {
+                      const subject = grid.mode === 'single' && grid.codes?.[index]
+                        ? `${grid.codes[index]} ${label}`
+                        : label;
+                      return (
+                        <th
+                          key={`${grid.id}-${index}`}
+                          className="survey-subject-head"
+                          title={`${shortGridLabel(template!, grid)} · ${subject}`}
+                        >
+                          <small className="survey-header-group">{shortGridLabel(template!, grid)}</small>
+                          <span>{subject}</span>
+                        </th>
+                      );
+                    }),
                   )}
+                  <th className="survey-status-col">狀態</th>
                 </tr>
               </thead>
               <tbody>
                 {visible.map((form) => (
                   <tr
                     key={form.id}
-                    className={formNeedsReview(form) ? 'survey-review-row' : ''}
+                    className={formNeedsReview(form, template!) ? 'survey-review-row' : ''}
                     onClick={() => setReviewForm(form.id)}
                   >
                     <td className="sticky survey-name-col">
@@ -1124,17 +1161,7 @@ export default function SurveyWorkspace({
                       }),
                     )}
                     <td className="survey-status-col">
-                      {form.reviewed ? (
-                        <span className="survey-badge done">
-                          <Check size={12} /> 覆核完成
-                        </span>
-                      ) : formNeedsReview(form) ? (
-                        <span className="survey-badge review">
-                          <AlertTriangle size={12} /> 需覆核
-                        </span>
-                      ) : (
-                        <span className="survey-badge ok">已讀取</span>
-                      )}
+                      <SurveyStatusTags form={form} template={template!} />
                     </td>
                   </tr>
                 ))}
@@ -1150,7 +1177,7 @@ export default function SurveyWorkspace({
             {visible.map((form) => (
               <article
                 key={form.id}
-                className={`survey-card ${formNeedsReview(form) ? 'review' : ''}`}
+                className={`survey-card ${formNeedsReview(form, template!) ? 'review' : ''}`}
                 onClick={() => setReviewForm(form.id)}
               >
                 <header>
@@ -1162,13 +1189,7 @@ export default function SurveyWorkspace({
                       {[form.className, form.seatNo].filter(Boolean).join(' / ') || '未有班別'}
                     </small>
                   </div>
-                  {form.reviewed ? (
-                    <span className="survey-badge done">覆核完成</span>
-                  ) : formNeedsReview(form) ? (
-                    <span className="survey-badge review">需覆核</span>
-                  ) : (
-                    <span className="survey-badge ok">已讀取</span>
-                  )}
+                  <SurveyStatusTags form={form} template={template!} />
                 </header>
                 <div className="survey-card-summary">
                   {(() => {

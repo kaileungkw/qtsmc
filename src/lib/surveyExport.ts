@@ -4,7 +4,12 @@
  * XLSX, UTF-8 CSVs and the original scanned PDFs.
  */
 import type { SurveyForm, SurveyTemplate, SurveyTemplateGrid } from './survey';
-import { formNeedsReview } from './survey';
+import {
+  formNeedsReview,
+  surveyBlankKeys,
+  surveyIssueKinds,
+  SURVEY_ISSUE_LABELS,
+} from './survey';
 import { reportFileBase } from './export';
 
 const FONT = 'Microsoft JhengHei';
@@ -76,23 +81,28 @@ function cellValue(form: SurveyForm, grid: SurveyTemplateGrid, row: number): str
   return value ?? 'BLANK';
 }
 
-function reviewNote(form: SurveyForm, grid: SurveyTemplateGrid, row: number): string {
+function reviewNote(
+  form: SurveyForm,
+  template: SurveyTemplate,
+  grid: SurveyTemplateGrid,
+  row: number,
+): string {
   const key = `${grid.id}:${row}`;
   if (form.ambiguous.includes(key)) {
     const choices = form.doubleChoices?.[key] ?? [];
     return choices.length ? `雙填：${choices.join('、')}` : '有雙填畫';
   }
   if (form.faint?.includes(key)) return '淡色填畫';
+  if (surveyBlankKeys(form, template).includes(key)) return '未填';
   if (form.reviewed) return '覆核完成';
   return form.flags[0] ?? '';
 }
 
-function statusValue(form: SurveyForm): string {
+function statusValue(form: SurveyForm, template: SurveyTemplate): string {
   if (form.reviewed) return '覆核完成';
-  if (form.flags[0]) return form.flags[0];
-  if (form.ambiguous.length) return '有雙填畫';
-  if (form.faint?.length) return '有淡色填畫';
-  return '已讀取';
+  const issues = surveyIssueKinds(form, template);
+  if (issues.length) return issues.map((kind) => SURVEY_ISSUE_LABELS[kind]).join('、');
+  return form.flags[0] ?? '已讀取';
 }
 
 function styleHeader(cell: import('exceljs').Cell, fill = NAVY): void {
@@ -193,7 +203,7 @@ async function buildXlsx(input: ExportInput): Promise<Blob> {
       }
     }
     const status = row.getCell(col);
-    status.value = statusValue(form);
+    status.value = statusValue(form, input.template);
     status.font = { name: FONT, size: 9 };
     status.alignment = { wrapText: true, vertical: 'middle' };
     row.commit();
@@ -212,7 +222,7 @@ async function buildXlsx(input: ExportInput): Promise<Blob> {
   for (const form of sorted) {
     for (const { page, grid } of grids) {
       for (let index = 0; index < grid.rows.length; index++) {
-        const note = reviewNote(form, grid, index);
+        const note = reviewNote(form, input.template, grid, index);
         long.addRow([
           form.candidateNo,
           form.name,
@@ -272,7 +282,7 @@ async function buildXlsx(input: ExportInput): Promise<Blob> {
   settings.addRow(['項目', '內容']).eachCell((cell) => styleHeader(cell));
   settings.getColumn(1).width = 22;
   settings.getColumn(2).width = 60;
-  const reviewCount = input.forms.filter(formNeedsReview).length;
+  const reviewCount = input.forms.filter((form) => formNeedsReview(form, input.template)).length;
   [
     ['調查', input.subject],
     ['年級', input.formLevel],
@@ -330,7 +340,7 @@ function buildCsvFiles(input: ExportInput): { name: string; text: string }[] {
         ...grids.flatMap(({ grid }) =>
           grid.rows.map((_, index) => cellValue(form, grid, index)),
         ),
-        statusValue(form),
+        statusValue(form, input.template),
       ]),
     );
   }
@@ -351,7 +361,7 @@ function buildCsvFiles(input: ExportInput): { name: string; text: string }[] {
             gridLabel(input.template, grid),
             subjectLabel(grid, index),
             cellValue(form, grid, index),
-            reviewNote(form, grid, index),
+            reviewNote(form, input.template, grid, index),
           ]),
         );
       }
@@ -403,6 +413,12 @@ function buildCsvFiles(input: ExportInput): { name: string; text: string }[] {
     { name: '原始資料.csv', text: longLines.join('\r\n') },
     { name: '科目統計.csv', text: statLines.join('\r\n') },
   ];
+}
+
+export async function exportSurveyXlsx(input: ExportInput): Promise<void> {
+  const base = reportFileBase(input);
+  const xlsx = await buildXlsx(input);
+  download(xlsx, `${base}.xlsx`);
 }
 
 export async function exportSurveyZip(input: ExportInput): Promise<void> {

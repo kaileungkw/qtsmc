@@ -1643,9 +1643,83 @@ export function normalizeSurveyForms(forms: SurveyForm[]): SurveyForm[] {
   return syncDuplicateCandidateFlags(normalized);
 }
 
-export function formNeedsReview(form: SurveyForm): boolean {
+export const SURVEY_ISSUE_LABELS = {
+  double: '雙填',
+  blank: '未填',
+  faint: '淡色',
+  unnamed: '姓名不詳',
+  duplicate: '重複學號',
+  candidate: '學號問題',
+  page: '頁面問題',
+} as const;
+
+export type SurveyIssueKind = keyof typeof SURVEY_ISSUE_LABELS;
+
+export const SURVEY_ISSUE_ORDER: SurveyIssueKind[] = [
+  'double',
+  'blank',
+  'faint',
+  'unnamed',
+  'duplicate',
+  'candidate',
+  'page',
+];
+
+/** Blank ranks on pages that actually exist; optional APL and double fills are separate. */
+export function surveyBlankKeys(form: SurveyForm, template: SurveyTemplate): string[] {
+  const presentPages = new Set(
+    form.pages.map((page) => page.templatePage).filter((page) => page > 0),
+  );
+  const doubles = new Set(form.ambiguous);
+  const keys: string[] = [];
+  for (const page of template.pages) {
+    if (!presentPages.has(page.page)) continue;
+    for (const grid of page.grids) {
+      if (grid.isCandidate || grid.mode !== 'rank') continue;
+      for (let row = 0; row < grid.rows.length; row++) {
+        const key = `${grid.id}:${row}`;
+        const value = form.values[grid.id]?.[row];
+        if ((value === null || value === undefined) && !doubles.has(key)) keys.push(key);
+      }
+    }
+  }
+  return keys;
+}
+
+export function surveyIssueKinds(form: SurveyForm, template: SurveyTemplate): SurveyIssueKind[] {
+  const issues = new Set<SurveyIssueKind>();
+  if (form.ambiguous.length) issues.add('double');
+  if (surveyBlankKeys(form, template).length) issues.add('blank');
+  if (form.faint?.length) issues.add('faint');
+  if (!form.name.trim()) issues.add('unnamed');
+  for (const flag of form.flags) {
+    if (/^考生號碼重複（\d+ 份）$/.test(flag)) issues.add('duplicate');
+    else if (
+      flag === '未有考生號碼' ||
+      flag === '考生號碼未能讀取' ||
+      flag === '考生號碼有兩個填畫'
+    ) {
+      issues.add('candidate');
+    } else if (
+      flag.startsWith('缺少第 ') ||
+      flag.startsWith('重複頁 ') ||
+      flag === '頁面配對不準' ||
+      flag === '未能辨識頁面'
+    ) {
+      issues.add('page');
+    }
+  }
+  return SURVEY_ISSUE_ORDER.filter((kind) => issues.has(kind));
+}
+
+export function formNeedsReview(form: SurveyForm, template: SurveyTemplate): boolean {
   if (form.reviewed) return false;
-  return form.flags.length > 0 || form.ambiguous.length > 0 || (form.faint?.length ?? 0) > 0;
+  return (
+    form.flags.length > 0 ||
+    form.ambiguous.length > 0 ||
+    (form.faint?.length ?? 0) > 0 ||
+    surveyBlankKeys(form, template).length > 0
+  );
 }
 
 /** Value lookup that honours the teacher's per-form corrections. */

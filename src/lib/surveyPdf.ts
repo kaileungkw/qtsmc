@@ -220,32 +220,145 @@ export async function readSurveyTextPages(file: File): Promise<SurveyTextPage[]>
   return pages;
 }
 
+async function renderReviewImage(
+  file: File,
+  half: 'full' | 'left' | 'right',
+): Promise<HTMLCanvasElement> {
+  const canvas = await imageToCanvas(file);
+  const landscape = canvas.width > canvas.height * 1.25;
+  const part = landscape ? splitCanvas(canvas, half === 'right' ? 'right' : 'left') : canvas;
+  const skew = estimateSkew(part);
+  return skew ? rotateCanvas(part, skew) : part;
+}
+
+async function renderReviewPdfPage(
+  file: File,
+  pageNo: number,
+  half: 'full' | 'left' | 'right',
+  pdf: pdfjsLib.PDFDocumentProxy,
+): Promise<HTMLCanvasElement> {
+  const page = await pdf.getPage(pageNo);
+  const base = page.getViewport({ scale: 1 });
+  const landscape = base.width > base.height * 1.25;
+  const canvas = await renderPageCanvas(
+    page,
+    landscape ? LANDSCAPE_WIDTH : PORTRAIT_WIDTH,
+  );
+  const part = landscape ? splitCanvas(canvas, half === 'right' ? 'right' : 'left') : canvas;
+  const skew = estimateSkew(part);
+  return skew ? rotateCanvas(part, skew) : part;
+}
+
 /** Render one logical page for the review viewer. */
 export async function renderSurveyReviewPage(
   file: File,
   pageNo: number,
   half: 'full' | 'left' | 'right',
 ): Promise<HTMLCanvasElement> {
-  if (!isSurveyScanPdf(file)) {
-    const canvas = await imageToCanvas(file);
-    const landscape = canvas.width > canvas.height * 1.25;
-    const part = landscape ? splitCanvas(canvas, half === 'right' ? 'right' : 'left') : canvas;
-    const skew = estimateSkew(part);
-    return skew ? rotateCanvas(part, skew) : part;
-  }
+  if (!isSurveyScanPdf(file)) return renderReviewImage(file, half);
   const pdf = await openPdf(file);
   try {
-    const page = await pdf.getPage(pageNo);
-    const base = page.getViewport({ scale: 1 });
-    const landscape = base.width > base.height * 1.25;
-    const canvas = await renderPageCanvas(
-      page,
-      landscape ? LANDSCAPE_WIDTH : PORTRAIT_WIDTH,
-    );
-    const part = landscape ? splitCanvas(canvas, half === 'right' ? 'right' : 'left') : canvas;
-    const skew = estimateSkew(part);
-    return skew ? rotateCanvas(part, skew) : part;
+    return await renderReviewPdfPage(file, pageNo, half, pdf);
   } finally {
     await pdf.destroy();
   }
+}
+
+export interface SurveyReviewLoader {
+  render(
+    scan: { name: string; blob: Blob },
+    pageNo: number,
+    half: 'full' | 'left' | 'right',
+  ): Promise<HTMLCanvasElement>;
+  dispose(): Promise<void>;
+  stats(): { documents: number; pages: number };
+}
+
+/** Share one PDF per source and keep only the six most recent logical pages. */
+export function createSurveyReviewLoader(): SurveyReviewLoader {
+  const sourceIds = new WeakMap<Blob, number>();
+  const files = new Map<number, File>();
+  const documents = new Map<number, Promise<pdfjsLib.PDFDocumentProxy>>();
+  const rendered = new Map<string, Promise<HTMLCanvasElement>>();
+  const recent: string[] = [];
+  let nextSource = 0;
+  let disposed = false;
+
+  const sourceKey = (scan: { name: string; blob: Blob }): number => {
+    let key = sourceIds.get(scan.blob);
+    if (!key) {
+      key = ++nextSource;
+      sourceIds.set(scan.blob, key);
+      files.set(key, new File([scan.blob], scan.name, { type: scan.blob.type || '' }));
+    }
+    return key;
+  };
+
+  const documentFor = (key: number): Promise<pdfjsLib.PDFDocumentProxy> => {
+    const existing = documents.get(key);
+    if (existing) return existing;
+    const file = files.get(key);
+    if (!file) return Promise.reject(new Error('找不到原始掃描。'));
+    const promise = openPdf(file).catch((error) => {
+      documents.delete(key);
+      throw error;
+    });
+    documents.set(key, promise);
+    return promise;
+  };
+
+  const touch = (pageKey: string) => {
+    const index = recent.indexOf(pageKey);
+    if (index >= 0) recent.splice(index, 1);
+    recent.push(pageKey);
+    while (recent.length > 6) {
+      const oldest = recent.shift();
+      if (oldest) rendered.delete(oldest);
+    }
+  };
+
+  return {
+    async render(scan, pageNo, half) {
+      if (disposed) throw new Error('覆核檢視器已關閉。');
+      const source = sourceKey(scan);
+      const pageKey = `${source}:${pageNo}:${half}`;
+      const cached = rendered.get(pageKey);
+      if (cached) {
+        touch(pageKey);
+        return cached;
+      }
+      const task = (async () => {
+        const file = files.get(source);
+        if (!file) throw new Error('找不到原始掃描。');
+        if (!isSurveyScanPdf(file)) return renderReviewImage(file, half);
+        const pdf = await documentFor(source);
+        return renderReviewPdfPage(file, pageNo, half, pdf);
+      })();
+      rendered.set(pageKey, task);
+      touch(pageKey);
+      try {
+        return await task;
+      } catch (error) {
+        rendered.delete(pageKey);
+        const index = recent.indexOf(pageKey);
+        if (index >= 0) recent.splice(index, 1);
+        throw error;
+      }
+    },
+    async dispose() {
+      if (disposed) return;
+      disposed = true;
+      rendered.clear();
+      recent.length = 0;
+      const pending = [...documents.values()];
+      documents.clear();
+      await Promise.allSettled(
+        pending.map(async (promise) => (await promise).destroy()),
+      );
+      files.clear();
+    },
+    stats() {
+      return { documents: documents.size, pages: rendered.size };
+    },
+  };
 }
