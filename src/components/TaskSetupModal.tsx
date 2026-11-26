@@ -112,11 +112,6 @@ export default function TaskSetupModal({
           <p className="setup-note">
             及格線會按年級自動設定：S1–S3 為 50%，S4–S6 為 40%。之後可在匯出頁更改。
           </p>
-          {mode === 'new' && (
-            <p className="setup-note survey-setup-note">
-              中三選科表：建立後<strong>先上載學校原本的空白表格 PDF</strong>，再上載掃描版本。
-            </p>
-          )}
         </div>
 
         <div className="setup-actions">

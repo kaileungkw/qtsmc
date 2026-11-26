@@ -1,7 +1,7 @@
 {
   "name": "qtsmc",
   "private": true,
-  "version": "2.13.0",
+  "version": "2.13.1",
   "type": "module",
   "description": "QTSMC answer-sheet marker — browser-only MCQ grading and statistics",
   "scripts": {
