@@ -108,10 +108,6 @@ export default function TaskSetupModal({
               </select>
             </label>
           </div>
-
-          <p className="setup-note">
-            及格線會按年級自動設定：S1–S3 為 50%，S4–S6 為 40%。之後可在匯出頁更改。
-          </p>
         </div>
 
         <div className="setup-actions">
