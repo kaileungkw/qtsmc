@@ -19,6 +19,9 @@ import {
   assembleSurveyForms,
   buildSurveyTemplateFromPages,
   formNeedsReview,
+  normalizeSurveyForms,
+  syncDuplicateCandidateFlags,
+  surveyGridIssueFlag,
   type SurveyForm,
   type SurveyLogicalPage,
   type SurveyTemplate,
@@ -122,7 +125,7 @@ export default function SurveyWorkspace({
         setBlankPdf(saved.blankPdf ?? null);
         setScans(saved.scans ?? []);
         setPages(saved.pages ?? []);
-        setForms(saved.forms ?? []);
+        setForms(normalizeSurveyForms(saved.forms ?? []));
         setFilter('all');
         setReviewForm(null);
       })
@@ -402,29 +405,55 @@ export default function SurveyWorkspace({
 
   const updateForm = useCallback(
     (id: string, patch: Partial<SurveyForm>) => {
-      setForms((prev) => prev.map((form) => (form.id === id ? { ...form, ...patch } : form)));
+      setForms((prev) =>
+        syncDuplicateCandidateFlags(
+          prev.map((form) => (form.id === id ? { ...form, ...patch } : form)),
+        ),
+      );
     },
     [],
   );
 
   const setValue = useCallback(
     (formId: string, gridId: string, row: number, value: number | null) => {
+      const templatePage = template?.pages.find((page) =>
+        page.grids.some((grid) => grid.id === gridId),
+      );
+      const grid = templatePage?.grids.find((item) => item.id === gridId);
+      const doubleFlag =
+        templatePage && grid ? surveyGridIssueFlag(templatePage, grid, 'double') : '';
+      const faintFlag =
+        templatePage && grid ? surveyGridIssueFlag(templatePage, grid, 'faint') : '';
       setForms((prev) =>
         prev.map((form) => {
           if (form.id !== formId) return form;
-          const values = { ...(form.values[gridId] ?? []) };
+          const key = `${gridId}:${row}`;
+          const values = [...(form.values[gridId] ?? [])];
           values[row] = value;
-          const ambiguous = form.ambiguous.filter((key) => key !== `${gridId}:${row}`);
+          const ambiguous = form.ambiguous.filter((item) => item !== key);
+          const faint = (form.faint ?? []).filter((item) => item !== key);
+          const doubleChoices = { ...(form.doubleChoices ?? {}) };
+          delete doubleChoices[key];
+          let flags = form.flags;
+          if (doubleFlag && !ambiguous.some((item) => item.startsWith(`${gridId}:`))) {
+            flags = flags.filter((flag) => flag !== doubleFlag);
+          }
+          if (faintFlag && !faint.some((item) => item.startsWith(`${gridId}:`))) {
+            flags = flags.filter((flag) => flag !== faintFlag);
+          }
           return {
             ...form,
             values: { ...form.values, [gridId]: values },
             ambiguous,
+            doubleChoices,
+            faint,
+            flags,
             reviewed: false,
           };
         }),
       );
     },
-    [],
+    [template],
   );
 
   const counts = useMemo(() => {

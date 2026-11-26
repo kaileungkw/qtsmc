@@ -1,0 +1,335 @@
+/* Continuous three-page survey review, loaded after the shared styles. */
+.survey-page-tabs .zoom-controls {
+  margin-left: auto;
+}
+
+.survey-page-tabs > button {
+  min-height: 34px;
+  cursor: pointer;
+}
+
+.survey-canvas-wrap {
+  display: block;
+  padding: 10px 12px 18px;
+}
+
+.survey-review-page {
+  min-width: 0;
+  margin: 0 0 16px;
+  scroll-margin-top: 8px;
+}
+
+.survey-review-page:last-child {
+  margin-bottom: 0;
+}
+
+.survey-review-page-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 30px;
+  padding: 3px 4px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.survey-review-page-label span {
+  color: var(--gold);
+  font-size: 11px;
+}
+
+.survey-review-page.active .survey-review-page-label strong {
+  color: var(--teal);
+}
+
+.survey-review-page-zoom {
+  min-width: 0;
+  margin: 0 auto;
+  transition: width 120ms ease;
+}
+
+.survey-review-page-stage {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+
+.survey-canvas {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.survey-canvas-placeholder,
+.survey-canvas-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 20px;
+  color: var(--ink-3);
+  font-size: 12px;
+  text-align: center;
+  background: var(--surface);
+}
+
+.survey-canvas-error {
+  color: #ae453c;
+}
+
+.survey-legend {
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.survey-legend i.multi {
+  border-color: #6a4c93;
+  border-radius: 2px;
+}
+
+.survey-review-side {
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.survey-review-side-top {
+  flex: none;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.survey-review-side > .survey-review-list {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) var(--surface-2);
+}
+
+.survey-review-list > * {
+  flex: none;
+}
+
+.survey-review-form-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.survey-review-form-flags span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  background: var(--gold-soft);
+  color: var(--gold);
+  font-size: 11px;
+}
+
+.survey-review-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 12px;
+}
+
+.survey-review-filter > div:first-child {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.survey-review-filter > div:first-child span {
+  color: var(--ink-3);
+  font-size: 11px;
+}
+
+.survey-review-filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.survey-review-filter-actions .filter-pill {
+  min-height: 32px;
+  cursor: pointer;
+}
+
+.survey-review-grid {
+  min-width: 0;
+}
+
+.survey-review-grid.active {
+  border-color: rgba(13, 102, 87, 0.55);
+  box-shadow: 0 0 0 1px rgba(13, 102, 87, 0.08);
+}
+
+.survey-review-grid-head {
+  align-items: center;
+}
+
+.survey-review-grid-head strong {
+  font-size: 12px;
+}
+
+.survey-review-grid-head span {
+  text-align: right;
+  font-size: 10px;
+}
+
+.survey-review-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+  padding: 7px 10px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.survey-review-item.double {
+  background: rgba(106, 76, 147, 0.09);
+}
+
+.survey-review-item.faint {
+  background: var(--gold-soft);
+}
+
+.survey-subject-locate {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  text-align: left;
+  cursor: pointer;
+}
+
+.survey-subject-locate:hover {
+  color: var(--teal);
+}
+
+.survey-subject-locate > span {
+  display: block;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.survey-subject-locate small {
+  display: block;
+  margin-top: 2px;
+  color: var(--gold);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.survey-review-item.double .survey-subject-locate small {
+  color: #6a4c93;
+}
+
+.survey-review-item select {
+  flex: none;
+  width: 68px;
+  min-height: 34px;
+  padding: 4px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.survey-review-item.double select {
+  border-color: #6a4c93;
+  color: #6a4c93;
+}
+
+.survey-review-item input[type='checkbox'] {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+
+.survey-review-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 12px 8px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-3);
+  font-size: 11px;
+}
+
+@media (max-width: 860px) {
+  .survey-review-side {
+    overflow: visible;
+  }
+
+  .survey-review-side > .survey-review-list {
+    flex: none;
+    overflow: visible;
+    padding: 12px 16px 16px;
+    scrollbar-gutter: auto;
+  }
+}
+
+@media (max-width: 560px) {
+  .survey-page-tabs {
+    padding: 8px;
+    gap: 5px;
+  }
+
+  .survey-page-tabs > button {
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+
+  .survey-page-tabs .zoom-controls {
+    min-height: 34px;
+  }
+
+  .survey-review-side-top {
+    padding: 12px 12px 10px;
+  }
+
+  .survey-review-side > .survey-review-list {
+    padding: 12px;
+  }
+
+  .survey-review-filter-actions .filter-pill {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .survey-review-item select {
+    min-height: 38px;
+  }
+}

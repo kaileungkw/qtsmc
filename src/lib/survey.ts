@@ -102,6 +102,10 @@ export interface SurveyGridRead {
   values: (number | null)[];
   /** Highest ink fraction per row, for diagnostics. */
   ink: number[];
+  /** Every sufficiently filled option per row, using 1-based values. */
+  markedOptions: number[][];
+  /** Raw central-ink fractions for every option, for review diagnostics. */
+  optionScores: number[][];
   /** Rows where two bubbles are too close to call. */
   ambiguous: number[];
   /** Rows whose ink is faint enough to doubt. */
@@ -152,6 +156,10 @@ export interface SurveyForm {
   values: Record<string, (number | null)[]>;
   /** "gridId:row" entries that need a human look. */
   ambiguous: string[];
+  /** Actual options for each unresolved double fill, keyed gridId:row. */
+  doubleChoices: Record<string, number[]>;
+  /** "gridId:row" entries with a single faint fill. */
+  faint: string[];
   flags: string[];
   reviewed: boolean;
 }
@@ -172,6 +180,10 @@ export interface SurveyGridRead {
   values: (number | null)[];
   /** Highest ink fraction per row, for diagnostics. */
   ink: number[];
+  /** Every sufficiently filled option per row, using 1-based values. */
+  markedOptions: number[][];
+  /** Raw central-ink fractions for every option, for review diagnostics. */
+  optionScores: number[][];
   /** Rows where two bubbles are too close to call. */
   ambiguous: number[];
   /** Rows whose ink is faint enough to doubt. */
@@ -222,6 +234,10 @@ export interface SurveyForm {
   values: Record<string, (number | null)[]>;
   /** "gridId:row" entries that need a human look. */
   ambiguous: string[];
+  /** Actual options for each unresolved double fill, keyed gridId:row. */
+  doubleChoices: Record<string, number[]>;
+  /** "gridId:row" entries with a single faint fill. */
+  faint: string[];
   flags: string[];
   reviewed: boolean;
 }
@@ -869,7 +885,7 @@ function alignPage(
     // This is only a coarse search. Let the per-grid checks below decide
     // whether the page really matches; a shifted/scaled scan can start with
     // fewer than 15% of its circles aligned.
-    if (votes[bestBin] < Math.max(5, Math.ceil(points.length * 0.08))) continue;
+    if (votes[bestBin] < Math.max(4, Math.ceil(points.length * 0.08))) continue;
     let tx = originX + (bestBin % bins) * step;
     let ty = originY + Math.floor(bestBin / bins) * step;
     let sx = baseSx;
@@ -1231,6 +1247,8 @@ function readGridAligned(
 ): SurveyGridRead {
   const values: (number | null)[] = [];
   const ink: number[] = [];
+  const markedOptions: number[][] = [];
+  const optionScores: number[][] = [];
   const ambiguous: number[] = [];
   const faint: number[] = [];
   const radius = Math.max(2, grid.bubbleSize * align.sx * 0.22);
@@ -1239,15 +1257,14 @@ function readGridAligned(
     for (let column = 0; column < grid.columns; column++) {
       scores.push(coreInk(gray, mappedX(grid, column, align), mappedY(grid, row, align), radius, threshold));
     }
-    if (grid.id === 'p1g2' && row === 0) {
-    }
     const order = scores
       .map((score, index) => ({ score, index }))
       .sort((a, b) => b.score - a.score);
     const top = order[0];
-    const second = order[1] ?? { score: 0, index: -1 };
+    optionScores.push([...scores]);
     ink.push(top.score);
     if (grid.mode === 'single') {
+      markedOptions.push(top.score >= 0.28 ? [top.index + 1] : []);
       if (top.score >= 0.28) {
         values.push(1);
         if (top.score < 0.4) faint.push(row);
@@ -1256,19 +1273,30 @@ function readGridAligned(
       }
       continue;
     }
-    // A blank ring leaves up to ~0.24 of ink in its centre on a dark scan;
-    // a real pencil mark is 0.3+.
-    if (top.score < 0.25) {
+    // A blank ring leaves up to ~0.24 of ink in its centre on a dark scan.
+    // Keep fills comparable to the strongest one. An absolute ink floor alone
+    // catches real crossed-out marks, but also promotes rim/speck artefacts;
+    // a 0.07 maximum difference is likewise wrong because two real fills can
+    // legitimately have very different darkness (e.g. 0.83 versus 0.98).
+    const fillFloor = Math.max(0.25, top.score * 0.62);
+    const marked = scores
+      .map((score, index) => ({ score, value: index + 1 }))
+      .filter((item) => item.score >= fillFloor)
+      .map((item) => item.value);
+    markedOptions.push(marked);
+    if (!marked.length) {
       values.push(null);
       continue;
     }
-    values.push(top.index + 1);
-    if (top.score < 0.32) faint.push(row);
-    if (second.score >= top.score * 0.62 && top.score - second.score < 0.07) {
+    if (marked.length > 1) {
+      values.push(null);
       ambiguous.push(row);
+      continue;
     }
+    values.push(marked[0]);
+    if (top.score < 0.32) faint.push(row);
   }
-  return { values, ink, ambiguous, faint };
+  return { values, ink, markedOptions, optionScores, ambiguous, faint };
 }
 
 function readCandidateAligned(
@@ -1329,6 +1357,21 @@ function scanGeometry(
       isCandidate: grid.isCandidate,
     };
   });
+}
+
+export function surveyGridIssueFlag(
+  page: SurveyTemplatePage,
+  grid: SurveyTemplateGrid,
+  kind: 'double' | 'faint',
+): string {
+  const contentGrids = page.grids.filter((item) => !item.isCandidate);
+  const name =
+    grid.mode === 'single'
+      ? '應用學習'
+      : contentGrids.length > 1
+        ? `第 ${grid.page} 頁第 ${contentGrids.indexOf(grid) + 1} 組`
+        : `第 ${grid.page} 頁`;
+  return `「${name}」${kind === 'double' ? '有雙填畫' : '有淡色填畫'}`;
 }
 
 /**
@@ -1425,14 +1468,8 @@ export function analyseSurveyGrayPage(
       threshold,
     );
     grids[grid.id] = read;
-    const name =
-      grid.mode === 'single'
-        ? '應用學習'
-        : contentGrids.length > 1
-          ? `第 ${grid.page} 頁第 ${contentGrids.indexOf(grid) + 1} 組`
-          : `第 ${grid.page} 頁`;
-    if (read.ambiguous.length) flags.push(`「${name}」有雙填畫`);
-    if (read.faint.length) flags.push(`「${name}」有淡色填畫`);
+    if (read.ambiguous.length) flags.push(surveyGridIssueFlag(bestPage, grid, 'double'));
+    if (read.faint.length) flags.push(surveyGridIssueFlag(bestPage, grid, 'faint'));
   }
   return {
     templatePage: bestPage.page,
@@ -1485,6 +1522,8 @@ export function assembleSurveyForms(
     }));
     const values: Record<string, (number | null)[]> = {};
     const ambiguous: string[] = [];
+    const doubleChoices: Record<string, number[]> = {};
+    const faint: string[] = [];
     const flags: string[] = [];
     let candidateNo = '';
     for (const page of current) {
@@ -1492,8 +1531,13 @@ export function assembleSurveyForms(
       if (!read) continue;
       if (read.templatePage === 1) candidateNo = read.candidateNo;
       for (const [gridId, grid] of Object.entries(read.grids)) {
-        if (!values[gridId]) values[gridId] = grid.values;
-        for (const row of grid.ambiguous) ambiguous.push(`${gridId}:${row}`);
+        if (!values[gridId]) values[gridId] = [...grid.values];
+        for (const row of grid.ambiguous) {
+          const key = `${gridId}:${row}`;
+          ambiguous.push(key);
+          doubleChoices[key] = [...(grid.markedOptions?.[row] ?? [])];
+        }
+        for (const row of grid.faint) faint.push(`${gridId}:${row}`);
       }
       for (const flag of read.flags) if (!flags.includes(flag)) flags.push(flag);
     }
@@ -1520,6 +1564,8 @@ export function assembleSurveyForms(
       pages: pagesRef,
       values,
       ambiguous,
+      doubleChoices,
+      faint,
       flags,
       reviewed: false,
     });
@@ -1548,10 +1594,17 @@ export function assembleSurveyForms(
   }
   flush();
 
-  // A readable number can still be wrong. Two forms with the same candidate
-  // number must be reviewed even when the roster supplies a name for both.
+  return syncDuplicateCandidateFlags(forms);
+}
+
+/** Recompute duplicate-number flags after either assembly or a manual edit. */
+export function syncDuplicateCandidateFlags(forms: SurveyForm[]): SurveyForm[] {
   const byCandidate = new Map<string, SurveyForm[]>();
-  for (const form of forms) {
+  const next = forms.map((form) => ({
+    ...form,
+    flags: form.flags.filter((flag) => !/^考生號碼重複（\d+ 份）$/.test(flag)),
+  }));
+  for (const form of next) {
     if (!/^\d{4}$/.test(form.candidateNo)) continue;
     const group = byCandidate.get(form.candidateNo) ?? [];
     group.push(form);
@@ -1560,16 +1613,39 @@ export function assembleSurveyForms(
   for (const group of byCandidate.values()) {
     if (group.length < 2) continue;
     const flag = `考生號碼重複（${group.length} 份）`;
-    for (const form of group) {
-      if (!form.flags.includes(flag)) form.flags.push(flag);
-    }
+    for (const form of group) form.flags.push(flag);
   }
-  return forms;
+  return next;
+}
+
+/** Normalise sessions saved before per-option double fills were recorded. */
+export function normalizeSurveyForms(forms: SurveyForm[]): SurveyForm[] {
+  const normalized = forms.map((form) => {
+    const ambiguous = form.ambiguous ?? [];
+    const values = { ...form.values };
+    for (const key of ambiguous) {
+      const separator = key.lastIndexOf(':');
+      const gridId = key.slice(0, separator);
+      const row = Number(key.slice(separator + 1));
+      if (!gridId || !Number.isInteger(row)) continue;
+      const rows = [...(values[gridId] ?? [])];
+      rows[row] = null;
+      values[gridId] = rows;
+    }
+    return {
+      ...form,
+      values,
+      ambiguous,
+      doubleChoices: form.doubleChoices ?? {},
+      faint: form.faint ?? [],
+    };
+  });
+  return syncDuplicateCandidateFlags(normalized);
 }
 
 export function formNeedsReview(form: SurveyForm): boolean {
   if (form.reviewed) return false;
-  return form.flags.length > 0 || form.ambiguous.length > 0;
+  return form.flags.length > 0 || form.ambiguous.length > 0 || (form.faint?.length ?? 0) > 0;
 }
 
 /** Value lookup that honours the teacher's per-form corrections. */
