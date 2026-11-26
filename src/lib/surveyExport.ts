@@ -4,6 +4,7 @@
  * XLSX, UTF-8 CSVs and the original scanned PDFs.
  */
 import type { SurveyForm, SurveyTemplate, SurveyTemplateGrid } from './survey';
+import { formNeedsReview } from './survey';
 import { reportFileBase } from './export';
 
 const FONT = 'Microsoft JhengHei';
@@ -12,7 +13,7 @@ const TEAL = 'FF0D6657';
 const TEAL_SOFT = 'FFE2F0E9';
 const LINE = 'FFE5DDCC';
 const GREY_SOFT = 'FFF3F0EA';
-const GOLD_SOFT = 'FFF7EDD4';
+const PURPLE_SOFT = 'FFEDE7F5';
 
 interface ExportInput {
   template: SurveyTemplate;
@@ -68,9 +69,30 @@ function gridLabel(template: SurveyTemplate, grid: SurveyTemplateGrid): string {
 }
 
 function cellValue(form: SurveyForm, grid: SurveyTemplateGrid, row: number): string | number {
+  const key = `${grid.id}:${row}`;
+  if (form.ambiguous.includes(key)) return 'MULTI';
   const value = form.values[grid.id]?.[row];
   if (grid.mode === 'single') return value ? '✓' : '';
   return value ?? 'BLANK';
+}
+
+function reviewNote(form: SurveyForm, grid: SurveyTemplateGrid, row: number): string {
+  const key = `${grid.id}:${row}`;
+  if (form.ambiguous.includes(key)) {
+    const choices = form.doubleChoices?.[key] ?? [];
+    return choices.length ? `雙填：${choices.join('、')}` : '有雙填畫';
+  }
+  if (form.faint?.includes(key)) return '淡色填畫';
+  if (form.reviewed) return '覆核完成';
+  return form.flags[0] ?? '';
+}
+
+function statusValue(form: SurveyForm): string {
+  if (form.reviewed) return '覆核完成';
+  if (form.flags[0]) return form.flags[0];
+  if (form.ambiguous.length) return '有雙填畫';
+  if (form.faint?.length) return '有淡色填畫';
+  return '已讀取';
 }
 
 function styleHeader(cell: import('exceljs').Cell, fill = NAVY): void {
@@ -161,7 +183,7 @@ async function buildXlsx(input: ExportInput): Promise<Blob> {
           cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GREY_SOFT } };
         }
         if (form.ambiguous.includes(`${grid.id}:${index}`)) {
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: GOLD_SOFT } };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: PURPLE_SOFT } };
         }
         cell.border = {
           bottom: { style: 'hair', color: { argb: LINE } },
@@ -171,11 +193,7 @@ async function buildXlsx(input: ExportInput): Promise<Blob> {
       }
     }
     const status = row.getCell(col);
-    status.value = form.reviewed
-      ? '覆核完成'
-      : form.flags.length || form.ambiguous.length
-        ? form.flags[0] || '有雙填畫'
-        : '已讀取';
+    status.value = statusValue(form);
     status.font = { name: FONT, size: 9 };
     status.alignment = { wrapText: true, vertical: 'middle' };
     row.commit();
@@ -194,13 +212,7 @@ async function buildXlsx(input: ExportInput): Promise<Blob> {
   for (const form of sorted) {
     for (const { page, grid } of grids) {
       for (let index = 0; index < grid.rows.length; index++) {
-        const value = form.values[grid.id]?.[index];
-        const flagged = form.ambiguous.includes(`${grid.id}:${index}`);
-        const note = form.reviewed
-          ? '覆核完成'
-          : flagged
-            ? '有雙填畫'
-            : form.flags[0] ?? '';
+        const note = reviewNote(form, grid, index);
         long.addRow([
           form.candidateNo,
           form.name,
@@ -209,7 +221,7 @@ async function buildXlsx(input: ExportInput): Promise<Blob> {
           page,
           gridLabel(input.template, grid),
           subjectLabel(grid, index),
-          grid.mode === 'single' ? (value ? '✓' : '') : (value ?? 'BLANK'),
+          cellValue(form, grid, index),
           note,
         ]);
       }
@@ -260,9 +272,7 @@ async function buildXlsx(input: ExportInput): Promise<Blob> {
   settings.addRow(['項目', '內容']).eachCell((cell) => styleHeader(cell));
   settings.getColumn(1).width = 22;
   settings.getColumn(2).width = 60;
-  const reviewCount = input.forms.filter(
-    (form) => !form.reviewed && (form.flags.length || form.ambiguous.length),
-  ).length;
+  const reviewCount = input.forms.filter(formNeedsReview).length;
   [
     ['調查', input.subject],
     ['年級', input.formLevel],
@@ -273,7 +283,7 @@ async function buildXlsx(input: ExportInput): Promise<Blob> {
     ['空白表格', input.template.name],
     ['表格頁數', input.template.pages.length],
     ['產生時間', new Date().toLocaleString('zh-HK')],
-    ['說明', '排序數字由掃描的填畫位置讀取；空白＝未填，金色＝雙填畫需覆核。'],
+    ['說明', 'BLANK＝未填；MULTI＝雙填，未修正前不計入排序統計；紫色＝雙填需覆核。'],
   ].forEach(([label, value]) => {
     const row = settings.addRow([label, value]);
     row.getCell(1).font = { name: FONT, size: 10, bold: true };
@@ -318,13 +328,9 @@ function buildCsvFiles(input: ExportInput): { name: string; text: string }[] {
         form.className,
         form.seatNo,
         ...grids.flatMap(({ grid }) =>
-          grid.rows.map((_, index) => {
-            const value = form.values[grid.id]?.[index];
-            if (grid.mode === 'single') return value ? '✓' : '';
-            return value ?? 'BLANK';
-          }),
+          grid.rows.map((_, index) => cellValue(form, grid, index)),
         ),
-        form.reviewed ? '覆核完成' : form.flags[0] || (form.ambiguous.length ? '有雙填畫' : '已讀取'),
+        statusValue(form),
       ]),
     );
   }
@@ -335,7 +341,6 @@ function buildCsvFiles(input: ExportInput): { name: string; text: string }[] {
   for (const form of sorted) {
     for (const { page, grid } of grids) {
       for (let index = 0; index < grid.rows.length; index++) {
-        const value = form.values[grid.id]?.[index];
         longLines.push(
           csvLine([
             form.candidateNo,
@@ -345,12 +350,8 @@ function buildCsvFiles(input: ExportInput): { name: string; text: string }[] {
             page,
             gridLabel(input.template, grid),
             subjectLabel(grid, index),
-            grid.mode === 'single' ? (value ? '✓' : '') : (value ?? 'BLANK'),
-            form.reviewed
-              ? '覆核完成'
-              : form.ambiguous.includes(`${grid.id}:${index}`)
-                ? '有雙填畫'
-                : form.flags[0] ?? '',
+            cellValue(form, grid, index),
+            reviewNote(form, grid, index),
           ]),
         );
       }
