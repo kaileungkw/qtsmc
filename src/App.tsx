@@ -1322,7 +1322,7 @@ export default function App() {
               title="開啟中三選科表"
             >
               <ClipboardList size={14} />
-              中三選科表
+              中三選科表（測試）
             </button>
           </div>
         )}

@@ -127,7 +127,7 @@ export default function TaskSetupModal({
               title="中三選科表：先上載空白 PDF 原檔，再上載掃描版本"
             >
               <ClipboardList size={15} />
-              中三選科表
+              中三選科表（測試）
             </button>
           )}
           <div className="setup-actions-right">
