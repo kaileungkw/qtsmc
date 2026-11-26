@@ -44,6 +44,45 @@ export const SENIOR_SUBJECTS = [
   '日文',
 ];
 
+const SUBJECT_FILE_TOKENS: Record<string, string> = {
+  中國語文: 'Chi',
+  英國語文: 'Eng',
+  英文: 'Eng',
+  數學: 'Math',
+  科學: 'Sci',
+  地理: 'Geog',
+  歷史: 'Hist',
+  中國歷史: 'CHist',
+  '公民、經濟與社會': 'CES',
+  生活與社會: 'LS',
+  普通電腦: 'ICT',
+  體育: 'PE',
+  視覺藝術: 'VA',
+  科技與生活: 'TL',
+  音樂: 'Mus',
+  普通話: 'PTH',
+  'QTS Stars': 'QTS_Stars',
+  STEAM教育: 'STEAM',
+  '數學延伸部分單元一（微積分與統計）': 'M1',
+  '數學延伸部分單元二（代數與微積分）': 'M2',
+  公民與社會發展: 'CSD',
+  經濟: 'Econ',
+  企業會計與財務概論: 'BAFS',
+  資訊及通訊科技: 'ICT',
+  物理: 'Phy',
+  化學: 'Chem',
+  生物: 'Bio',
+  健康管理與社會關懷: 'HMSC',
+  應用學習: 'ApL',
+  日文: 'Jap',
+};
+
+/** Short subject labels shared by report and source-scan filenames. */
+export function subjectFileToken(subject: string): string {
+  const value = subject.trim();
+  return SUBJECT_FILE_TOKENS[value] ?? value;
+}
+
 export interface SubjectGroup {
   label: string;
   subjects: string[];
