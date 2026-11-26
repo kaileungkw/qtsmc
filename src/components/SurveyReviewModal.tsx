@@ -18,6 +18,8 @@ interface SurveyReviewModalProps {
   onClose: () => void;
   onChange: (patch: Partial<SurveyForm>) => void;
   onValue: (gridId: string, row: number, value: number | null) => void;
+  onPrevStudent?: () => void;
+  onNextStudent?: () => void;
   onToast: (message: string, kind?: 'info' | 'success' | 'warning' | 'error') => void;
 }
 
@@ -32,6 +34,8 @@ export default function SurveyReviewModal({
   onClose,
   onChange,
   onValue,
+  onPrevStudent,
+  onNextStudent,
   onToast,
 }: SurveyReviewModalProps) {
   const [pageIndex, setPageIndex] = useState(0);
@@ -52,6 +56,8 @@ export default function SurveyReviewModal({
 
   useEffect(() => {
     setCandidate(form.candidateNo);
+    setPageIndex(0);
+    sideRef.current?.scrollTo({ top: 0 });
   }, [form.candidateNo, form.id]);
 
   const draw = useCallback(async () => {
@@ -239,9 +245,29 @@ export default function SurveyReviewModal({
               </small>
             </strong>
           </div>
-          <button className="icon-btn close" onClick={onClose} aria-label="關閉">
-            <X size={18} />
-          </button>
+          <div className="survey-student-nav">
+            <button
+              className="icon-btn"
+              onClick={onPrevStudent}
+              disabled={!onPrevStudent}
+              aria-label="上一個學生"
+              title="上一個學生"
+            >
+              <ChevronLeft size={17} />
+            </button>
+            <button
+              className="icon-btn"
+              onClick={onNextStudent}
+              disabled={!onNextStudent}
+              aria-label="下一個學生"
+              title="下一個學生"
+            >
+              <ChevronRight size={17} />
+            </button>
+            <button className="icon-btn close" onClick={onClose} aria-label="關閉">
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {form.flags.length > 0 && (

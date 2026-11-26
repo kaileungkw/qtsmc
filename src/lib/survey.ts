@@ -866,7 +866,10 @@ function alignPage(
     for (let i = 1; i < votes.length; i++) {
       if (votes[i] > votes[bestBin]) bestBin = i;
     }
-    if (votes[bestBin] < Math.max(5, Math.ceil(points.length * 0.15))) continue;
+    // This is only a coarse search. Let the per-grid checks below decide
+    // whether the page really matches; a shifted/scaled scan can start with
+    // fewer than 15% of its circles aligned.
+    if (votes[bestBin] < Math.max(5, Math.ceil(points.length * 0.08))) continue;
     let tx = originX + (bestBin % bins) * step;
     let ty = originY + Math.floor(bestBin / bins) * step;
     let sx = baseSx;
@@ -946,6 +949,73 @@ function alignPage(
   return best;
 }
 
+/**
+ * The four candidate-number columns are much wider apart than the subject
+ * columns. Find that lattice first, so a stray mark near the table edge cannot
+ * drag the candidate grid a whole column to the right.
+ */
+function findCandidateColumns(
+  detections: SurveyBubble[],
+  grid: SurveyTemplateGrid,
+  base: Alignment,
+  pitchX: number,
+): number[] | null {
+  if (!grid.isCandidate || detections.length < 8) return null;
+  const expectedPitch = pitchX * base.sx;
+  const tolerance = expectedPitch * 0.22;
+  const clusters: { x: number; count: number }[] = [];
+  for (const det of [...detections].sort((a, b) => a.x - b.x)) {
+    const last = clusters[clusters.length - 1];
+    if (last && Math.abs(det.x - last.x) <= tolerance) {
+      last.x = (last.x * last.count + det.x) / (last.count + 1);
+      last.count += 1;
+    } else {
+      clusters.push({ x: det.x, count: 1 });
+    }
+  }
+  if (clusters.length < grid.columns) return null;
+  const predicted = grid.columnX.map(
+    (x) => (x + grid.bubbleSize * 0.47) * base.sx + base.tx,
+  );
+  let best: { columns: number[]; score: number } | null = null;
+  for (let start = 0; start < clusters.length; start++) {
+    const chosen = [clusters[start]];
+    for (let column = 1; column < grid.columns; column++) {
+      const target = chosen[chosen.length - 1].x + expectedPitch;
+      let next: { x: number; count: number } | undefined;
+      let bestDistance = Infinity;
+      for (const cluster of clusters) {
+        if (cluster.x <= chosen[chosen.length - 1].x + expectedPitch * 0.35) continue;
+        const distance = Math.abs(cluster.x - target);
+        if (distance < bestDistance && distance <= expectedPitch * 0.5) {
+          bestDistance = distance;
+          next = cluster;
+        }
+      }
+      if (!next) break;
+      chosen.push(next);
+    }
+    if (chosen.length !== grid.columns) continue;
+    const gaps = chosen.slice(1).map((cluster, index) => cluster.x - chosen[index].x);
+    const meanGap = gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length;
+    const gapError = gaps.reduce(
+      (sum, gap) => sum + Math.abs(gap - meanGap) / expectedPitch,
+      0,
+    );
+    const positionError = chosen.reduce(
+      (sum, cluster, index) =>
+        sum + Math.abs(cluster.x - predicted[index]) / expectedPitch,
+      0,
+    ) / chosen.length;
+    const support = chosen.reduce((sum, cluster) => sum + cluster.count, 0);
+    const score = support / (grid.rows.length * grid.columns) - gapError - positionError * 0.4;
+    if (!best || score > best.score) {
+      best = { columns: chosen.map((cluster) => cluster.x), score };
+    }
+  }
+  return best && best.score > 0.15 ? best.columns : null;
+}
+
 function refineGrid(
   grid: SurveyTemplateGrid,
   detections: SurveyBubble[],
@@ -962,7 +1032,9 @@ function refineGrid(
   const baseTop = Math.min(...tplY) * base.sy + base.ty;
   const baseBottom = Math.max(...tplY) * base.sy + base.ty;
   const marginX = pitchX * base.sx * 2.2;
-  const marginY = pitchY * base.sy * 2.4;
+  // The page-wide fit can be short at the bottom of the candidate grid;
+  // allow the full ten rows before the subject table starts.
+  const marginY = pitchY * base.sy * (grid.isCandidate ? 7 : 2.4);
   const inGrid = detections.filter(
     (det) =>
       det.x >= baseLeft - marginX &&
@@ -983,26 +1055,76 @@ function refineGrid(
     }
   }
   const minRowItems = Math.max(1, Math.ceil(grid.columns * 0.6));
-  const usableRows = rowGroups.filter((group) => group.items.length >= minRowItems);
+  const candidateColumns = findCandidateColumns(inGrid, grid, base, pitchX);
+  let usableRows = rowGroups.filter((group) => group.items.length >= minRowItems);
+  if (candidateColumns) {
+    const filtered = usableRows.filter((group) => {
+      // A faint/crossed-out bubble may be missing from the last row. Match
+      // every detected item to a candidate column instead of requiring the
+      // rightmost column to be present in every row.
+      return group.items.every((item) =>
+        candidateColumns.some(
+          (column) => Math.abs(item.x - column) <= pitchX * base.sx * 0.35,
+        ),
+      );
+    });
+    if (filtered.length >= Math.min(5, grid.rows.length)) usableRows = filtered;
+  }
   if (!usableRows.length) return base;
 
-  // Bottom edge: nothing is printed below a grid, so the lowest bubble row is
-  // a reliable anchor even when the candidate header handwriting sits above.
   const sy = base.sy;
-  const ty = usableRows[usableRows.length - 1].y - tplY[tplY.length - 1] * sy;
-  const rowPositions = tplY.map((y) => {
-    const predicted = y * sy + ty;
-    let best: { y: number; items: SurveyBubble[] } | null = null;
-    let bestDistance = Infinity;
-    for (const group of usableRows) {
-      const distance = Math.abs(group.y - predicted);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        best = group;
+  let ty = usableRows[usableRows.length - 1].y - tplY[tplY.length - 1] * sy;
+  let rowPositions: number[];
+  let rowsForColumns = usableRows;
+  if (grid.isCandidate && usableRows.length >= grid.rows.length) {
+    // Do not use the bottom row for the candidate block: printed digits below
+    // it can look like another row. Pick the most regular ten-row run instead.
+    const expectedPitch = pitchY * sy;
+    let bestRun: { y: number; items: SurveyBubble[] }[] | null = null;
+    let bestCost = Infinity;
+    for (let start = 0; start + grid.rows.length <= usableRows.length; start++) {
+      const run = usableRows.slice(start, start + grid.rows.length);
+      const gaps = run.slice(1).map((row, index) => row.y - run[index].y);
+      if (gaps.some((gap) => gap < expectedPitch * 0.5 || gap > expectedPitch * 1.65)) {
+        continue;
+      }
+      const meanGap = gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length;
+      const spacingCost = gaps.reduce(
+        (sum, gap) => sum + Math.abs(gap - meanGap) / expectedPitch,
+        0,
+      );
+      const positionCost = Math.abs(run[0].y - baseTop) / expectedPitch;
+      const cost = spacingCost + positionCost * 0.12;
+      if (cost < bestCost) {
+        bestCost = cost;
+        bestRun = run;
       }
     }
-    return best && bestDistance <= pitchY * sy * 0.5 ? best.y : predicted;
-  });
+    if (bestRun) {
+      rowsForColumns = bestRun;
+      rowPositions = bestRun.map((row) => row.y);
+      ty = rowPositions[0] - tplY[0] * sy;
+    } else {
+      rowPositions = [];
+    }
+  } else {
+    rowPositions = [];
+  }
+  if (!rowPositions.length) {
+    rowPositions = tplY.map((y) => {
+      const predicted = y * sy + ty;
+      let best: { y: number; items: SurveyBubble[] } | null = null;
+      let bestDistance = Infinity;
+      for (const group of usableRows) {
+        const distance = Math.abs(group.y - predicted);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = group;
+        }
+      }
+      return best && bestDistance <= pitchY * sy * 0.5 ? best.y : predicted;
+    });
+  }
 
   // Right edge: the 排序 handwriting is to the left of the bubble table, so the
   // rightmost bubble column is the stable anchor for x.
@@ -1010,7 +1132,10 @@ function refineGrid(
   const detRight = median(rowRights);
   let sx = base.sx;
   let tx = detRight - tplX[tplX.length - 1] * sx;
-  const columns = tplX.map((x) => x * sx + tx);
+  let columns = candidateColumns ?? tplX.map((x) => x * sx + tx);
+  if (candidateColumns) {
+    tx = candidateColumns[0] - tplX[0] * sx;
+  }
   for (let column = 0; column < tplX.length; column++) {
     const predicted = columns[column];
     const offsets: number[] = [];
@@ -1018,6 +1143,12 @@ function refineGrid(
       if (Math.abs(det.x - predicted) > pitchX * sx * 0.35) continue;
       if (det.y < rowPositions[0] - pitchY * sy * 0.8) continue;
       if (det.y > rowPositions[rowPositions.length - 1] + pitchY * sy * 0.8) continue;
+      if (grid.isCandidate && rowsForColumns.length) {
+        const nearestRow = rowsForColumns.reduce((best, row) =>
+          Math.abs(row.y - det.y) < Math.abs(best.y - det.y) ? row : best,
+        );
+        if (Math.abs(nearestRow.y - det.y) > pitchY * sy * 0.65) continue;
+      }
       offsets.push(det.x - predicted);
     }
     if (offsets.length) columns[column] = predicted + median(offsets);
@@ -1416,6 +1547,23 @@ export function assembleSurveyForms(
     lastTemplatePage = templatePage;
   }
   flush();
+
+  // A readable number can still be wrong. Two forms with the same candidate
+  // number must be reviewed even when the roster supplies a name for both.
+  const byCandidate = new Map<string, SurveyForm[]>();
+  for (const form of forms) {
+    if (!/^\d{4}$/.test(form.candidateNo)) continue;
+    const group = byCandidate.get(form.candidateNo) ?? [];
+    group.push(form);
+    byCandidate.set(form.candidateNo, group);
+  }
+  for (const group of byCandidate.values()) {
+    if (group.length < 2) continue;
+    const flag = `考生號碼重複（${group.length} 份）`;
+    for (const form of group) {
+      if (!form.flags.includes(flag)) form.flags.push(flag);
+    }
+  }
   return forms;
 }
 

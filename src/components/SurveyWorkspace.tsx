@@ -132,6 +132,12 @@ export default function SurveyWorkspace({
     };
   }, [task.id]);
 
+  // Keep the task switcher's form count in sync when scans are added, removed
+  // or reprocessed, not only when a batch completes.
+  useEffect(() => {
+    if (hydrated) onTaskUpdate({ sheetCount: forms.length });
+  }, [forms.length, hydrated, onTaskUpdate]);
+
   // Autosave the survey session (results + original PDFs).
   useEffect(() => {
     if (!hydrated) return;
@@ -370,6 +376,13 @@ export default function SurveyWorkspace({
         forms: assembled,
       } satisfies SurveySavedState).catch(() => undefined);
       const review = assembled.filter((form) => formNeedsReview(form)).length;
+      if (assembled.length) {
+        window.setTimeout(() => {
+          document
+            .getElementById('survey-results')
+            ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
+      }
       onToast(
         assembled.length
           ? `已辨識 ${assembled.length} 份選科表${review ? `，${review} 份需覆核` : ''}。`
@@ -483,6 +496,9 @@ export default function SurveyWorkspace({
   );
 
   const selectedForm = forms.find((form) => form.id === reviewForm) ?? null;
+  const selectedVisibleIndex = selectedForm
+    ? forms.findIndex((form) => form.id === selectedForm.id)
+    : -1;
   const overallPercent = processing
     ? Math.min(
         99,
@@ -1167,6 +1183,16 @@ export default function SurveyWorkspace({
           onChange={(patch) => updateForm(selectedForm.id, patch)}
           onValue={(gridId, row, value) =>
             setValue(selectedForm.id, gridId, row, value)
+          }
+          onPrevStudent={
+            selectedVisibleIndex > 0
+              ? () => setReviewForm(forms[selectedVisibleIndex - 1].id)
+              : undefined
+          }
+          onNextStudent={
+            selectedVisibleIndex >= 0 && selectedVisibleIndex < forms.length - 1
+              ? () => setReviewForm(forms[selectedVisibleIndex + 1].id)
+              : undefined
           }
           onToast={onToast}
         />
