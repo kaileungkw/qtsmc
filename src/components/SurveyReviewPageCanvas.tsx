@@ -7,6 +7,7 @@ import type {
   SurveyTemplatePage,
 } from '../lib/survey';
 import { renderSurveyReviewPage } from '../lib/surveyPdf';
+import { enhanceCanvasContrast } from '../lib/canvasEnhance';
 
 interface SurveyReviewPageCanvasProps {
   form: SurveyForm;
@@ -15,6 +16,8 @@ interface SurveyReviewPageCanvasProps {
   templatePage?: SurveyTemplatePage;
   scan?: { name: string; blob: Blob };
   shouldLoad: boolean;
+  enhanced: boolean;
+  showMarkers: boolean;
   onRendered: (pageId: string) => void;
 }
 
@@ -33,6 +36,8 @@ export default function SurveyReviewPageCanvas({
   templatePage,
   scan,
   shouldLoad,
+  enhanced,
+  showMarkers,
   onRendered,
 }: SurveyReviewPageCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -74,11 +79,17 @@ export default function SurveyReviewPageCanvas({
     canvas.width = source.width;
     canvas.height = source.height;
     ctx.drawImage(source, 0, 0);
+    if (enhanced) enhanceCanvasContrast(canvas, ctx);
 
     if (!read || !templatePage) {
       ctx.fillStyle = 'rgba(174,69,60,0.9)';
       ctx.font = `${Math.round(canvas.width / 34)}px sans-serif`;
       ctx.fillText('這一頁未能辨識', 30, 60);
+      onRendered(pageRef.pageId);
+      return;
+    }
+
+    if (!showMarkers) {
       onRendered(pageRef.pageId);
       return;
     }
@@ -147,7 +158,7 @@ export default function SurveyReviewPageCanvas({
       }
     }
     onRendered(pageRef.pageId);
-  }, [form, onRendered, pageRef.pageId, read, source, templatePage]);
+  }, [enhanced, form, onRendered, pageRef.pageId, read, showMarkers, source, templatePage]);
 
   const ratio = templatePage
     ? `${templatePage.width} / ${templatePage.height}`
@@ -168,7 +179,11 @@ export default function SurveyReviewPageCanvas({
           </button>
         </div>
       ) : source ? (
-        <canvas ref={canvasRef} className="survey-canvas" aria-label="選科表標記圖" />
+        <canvas
+          ref={canvasRef}
+          className="survey-canvas"
+          aria-label={showMarkers ? '選科表標記圖' : '選科表掃描圖'}
+        />
       ) : (
         <div className="survey-canvas-placeholder">
           {shouldLoad ? '準備載入…' : '捲動到此頁時載入'}

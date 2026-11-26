@@ -4,6 +4,9 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Contrast,
+  Eye,
+  EyeOff,
   Filter,
   Minus,
   Plus,
@@ -59,6 +62,8 @@ export default function SurveyReviewModal({
   const [zoom, setZoom] = useState(() =>
     typeof window !== 'undefined' && window.innerWidth < 560 ? 130 : 100,
   );
+  const [cleanView, setCleanView] = useState(false);
+  const [enhanceView, setEnhanceView] = useState(true);
   const [candidate, setCandidate] = useState(form.candidateNo);
   const [onlyReview, setOnlyReview] = useState(
     () => new Set([...form.ambiguous, ...(form.faint ?? [])]).size > 0,
@@ -368,24 +373,44 @@ export default function SurveyReviewModal({
                   第 {page.templatePage || index + 1} 頁
                 </button>
               ))}
-              <div className="zoom-controls" aria-label="掃描圖縮放">
+              <div className="survey-view-actions">
                 <button
-                  className="icon-btn"
-                  onClick={() => setZoom((value) => Math.max(60, value - 20))}
-                  disabled={zoom <= 60}
-                  aria-label="縮小"
+                  className={`view-toggle ${cleanView ? 'active' : ''}`}
+                  onClick={() => setCleanView((value) => !value)}
+                  title={cleanView ? '顯示彩色標記' : '隱藏所有標記，只看原始掃描'}
+                  aria-pressed={cleanView}
                 >
-                  <Minus size={15} />
+                  {cleanView ? <Eye size={13} /> : <EyeOff size={13} />}
+                  {cleanView ? '顯示標記' : '原圖'}
                 </button>
-                <span>{zoom}%</span>
                 <button
-                  className="icon-btn"
-                  onClick={() => setZoom((value) => Math.min(200, value + 20))}
-                  disabled={zoom >= 200}
-                  aria-label="放大"
+                  className={`view-toggle ${enhanceView ? 'active' : ''}`}
+                  onClick={() => setEnhanceView((value) => !value)}
+                  title={enhanceView ? '關閉增強對比' : '加深淡色筆跡，方便覆核'}
+                  aria-pressed={enhanceView}
                 >
-                  <Plus size={15} />
+                  <Contrast size={13} />
+                  {enhanceView ? '增強中' : '增強對比'}
                 </button>
+                <div className="zoom-controls" aria-label="掃描圖縮放">
+                  <button
+                    className="icon-btn"
+                    onClick={() => setZoom((value) => Math.max(60, value - 20))}
+                    disabled={zoom <= 60}
+                    aria-label="縮小"
+                  >
+                    <Minus size={15} />
+                  </button>
+                  <span>{zoom}%</span>
+                  <button
+                    className="icon-btn"
+                    onClick={() => setZoom((value) => Math.min(200, value + 20))}
+                    disabled={zoom >= 200}
+                    aria-label="放大"
+                  >
+                    <Plus size={15} />
+                  </button>
+                </div>
               </div>
             </div>
             <div
@@ -430,6 +455,8 @@ export default function SurveyReviewModal({
                         templatePage={templatePage}
                         scan={scans.find((item) => item.name === page.fileName)}
                         shouldLoad={index <= loadThrough}
+                        enhanced={enhanceView}
+                        showMarkers={!cleanView}
                         onRendered={handleRendered}
                       />
                     </div>
