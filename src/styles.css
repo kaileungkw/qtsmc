@@ -6508,3 +6508,14 @@ body:has(.modal-backdrop) .toast {
 .survey-stats-table tr.single td:first-child {
   color: var(--teal);
 }
+
+.survey-template-drop {
+  border-radius: 16px;
+  transition: outline-color 0.12s ease, background 0.12s ease;
+}
+
+.survey-template-drop.dragging {
+  outline: 2px dashed var(--teal);
+  outline-offset: 4px;
+  background: var(--teal-soft);
+}
