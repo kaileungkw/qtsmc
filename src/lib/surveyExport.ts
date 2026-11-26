@@ -7,9 +7,18 @@ import type { SurveyForm, SurveyTemplate, SurveyTemplateGrid } from './survey';
 import {
   formNeedsReview,
   surveyBlankKeys,
+  surveyDuplicateRankKeys,
   surveyIssueKinds,
   SURVEY_ISSUE_LABELS,
 } from './survey';
+import type { RosterData } from './roster';
+import {
+  surveyClassScopes,
+  surveyGroupFirstChoices,
+  surveyMissingByClass,
+  surveyScopeForms,
+  surveyScopeLabel,
+} from './surveyAnalysis';
 import { reportFileBase } from './export';
 
 const FONT = 'Microsoft JhengHei';
@@ -28,6 +37,7 @@ interface ExportInput {
   date: string;
   formLevel: string;
   subject: string;
+  roster?: RosterData | null;
 }
 
 function download(blob: Blob, fileName: string): void {
@@ -93,6 +103,9 @@ function reviewNote(
     return choices.length ? `雙填：${choices.join('、')}` : '有雙填畫';
   }
   if (form.faint?.includes(key)) return '淡色填畫';
+  if (surveyDuplicateRankKeys(form, template).includes(key)) {
+    return `重複志願：${form.values[grid.id]?.[row]}`;
+  }
   if (surveyBlankKeys(form, template).includes(key)) return '未填';
   if (form.reviewed) return '覆核完成';
   return form.flags[0] ?? '';
@@ -277,6 +290,72 @@ async function buildXlsx(input: ExportInput): Promise<Blob> {
       ]);
     }
   }
+
+  const missingGroups = surveyMissingByClass(input.forms, input.roster ?? null);
+  if (missingGroups.some((group) => group.entries.length)) {
+    const missing = workbook.addWorksheet('缺交名單');
+    missing.addRow(['班別', '考生號碼', '姓名', '班內學號']).eachCell((cell) => styleHeader(cell));
+    [12, 14, 28, 12].forEach((width, index) => {
+      missing.getColumn(index + 1).width = width;
+    });
+    for (const group of missingGroups) {
+      for (const entry of group.entries) {
+        missing.addRow([
+          group.className,
+          entry.examId,
+          entry.name,
+          String(entry.num).padStart(2, '0'),
+        ]);
+      }
+    }
+  }
+
+  const analysisScopes = surveyClassScopes(input.forms).map((scope) => ({
+    scope,
+    groups: surveyGroupFirstChoices(surveyScopeForms(input.forms, scope), input.template),
+  }));
+  const analysis = workbook.addWorksheet('班別科目分析');
+  analysis.addRow([
+    '頁／組',
+    '科目',
+    ...analysisScopes.flatMap(({ scope }) => [
+      `${surveyScopeLabel(scope)} 人數`,
+      `${surveyScopeLabel(scope)} 百分比`,
+    ]),
+  ]).eachCell((cell) => styleHeader(cell));
+  analysis.getColumn(1).width = 26;
+  analysis.getColumn(2).width = 34;
+  analysisScopes.forEach((_, index) => {
+    analysis.getColumn(3 + index * 2).width = 12;
+    analysis.getColumn(4 + index * 2).width = 14;
+  });
+  const firstGroups = analysisScopes[0]?.groups ?? [];
+  firstGroups.forEach((group, groupIndex) => {
+    const title = `${gridLabel(input.template, group.grid)} · ${group.grid.rows.length} 選 1`;
+    group.rows.forEach((choice, rowIndex) => {
+      const values: (string | number)[] = [
+        title,
+        `${choice.code ? `${choice.code} ` : ''}${choice.label}`,
+      ];
+      for (const { groups } of analysisScopes) {
+        const current = groups[groupIndex].rows[rowIndex];
+        values.push(current.count, current.percent / 100);
+      }
+      const row = analysis.addRow(values);
+      analysisScopes.forEach((_, scopeIndex) => {
+        row.getCell(4 + scopeIndex * 2).numFmt = '0.0%';
+      });
+    });
+    const values: (string | number)[] = [title, '第 1 志願未確定'];
+    for (const { groups } of analysisScopes) {
+      const current = groups[groupIndex];
+      values.push(current.undetermined, current.total ? current.undetermined / current.total : 0);
+    }
+    const row = analysis.addRow(values);
+    analysisScopes.forEach((_, scopeIndex) => {
+      row.getCell(4 + scopeIndex * 2).numFmt = '0.0%';
+    });
+  });
 
   const settings = workbook.addWorksheet('設定');
   settings.addRow(['項目', '內容']).eachCell((cell) => styleHeader(cell));

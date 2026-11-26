@@ -6517,6 +6517,156 @@ body:has(.modal-backdrop) .toast {
   color: #fff8e9;
 }
 
+.survey-missing {
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.survey-missing summary {
+  padding: 11px 14px;
+  color: var(--gold);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.survey-missing summary span {
+  margin-left: 8px;
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.survey-missing-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 0 14px 14px;
+}
+
+.survey-missing-list section > strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.survey-missing-list ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.survey-missing-list li {
+  padding: 3px 0;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.survey-missing-list li code {
+  margin-right: 6px;
+  color: var(--teal);
+}
+
+.survey-missing-list li small {
+  color: var(--ink-3);
+}
+
+.survey-missing-warning {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--gold-soft);
+  color: var(--gold);
+  font-size: 12px;
+}
+
+.survey-analysis-controls {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.survey-scope-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.survey-scope-select select {
+  width: 100%;
+  min-width: 140px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.survey-choice-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.survey-choice-group {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.survey-choice-group h3 {
+  margin: 0;
+  padding: 9px 10px;
+  background: var(--teal-soft);
+  color: var(--teal);
+  font-size: 12px;
+}
+
+.survey-choice-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.survey-choice-table th,
+.survey-choice-table td {
+  padding: 6px 8px;
+  border-top: 1px solid var(--line);
+  text-align: left;
+}
+
+.survey-choice-table th:nth-child(n + 2),
+.survey-choice-table td:nth-child(n + 2) {
+  width: 76px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.survey-choice-table tr.undetermined {
+  background: var(--gold-soft);
+  color: var(--gold);
+}
+
+@media (max-width: 700px) {
+  .survey-missing-list {
+    grid-template-columns: 1fr;
+  }
+
+  .survey-analysis-controls {
+    justify-content: flex-start;
+  }
+}
+
 .survey-stats-wrap {
   overflow: auto;
   border: 1px solid var(--line);

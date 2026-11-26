@@ -1645,6 +1645,7 @@ export function normalizeSurveyForms(forms: SurveyForm[]): SurveyForm[] {
 
 export const SURVEY_ISSUE_LABELS = {
   double: '雙填',
+  rank: '重複志願',
   blank: '未填',
   faint: '淡色',
   unnamed: '姓名不詳',
@@ -1657,6 +1658,7 @@ export type SurveyIssueKind = keyof typeof SURVEY_ISSUE_LABELS;
 
 export const SURVEY_ISSUE_ORDER: SurveyIssueKind[] = [
   'double',
+  'rank',
   'blank',
   'faint',
   'unnamed',
@@ -1686,9 +1688,34 @@ export function surveyBlankKeys(form: SurveyForm, template: SurveyTemplate): str
   return keys;
 }
 
+/** Every row involved in a duplicate rank within its own subject grid. */
+export function surveyDuplicateRankKeys(form: SurveyForm, template: SurveyTemplate): string[] {
+  const keys: string[] = [];
+  for (const page of template.pages) {
+    for (const grid of page.grids) {
+      if (grid.isCandidate || grid.mode !== 'rank') continue;
+      const byValue = new Map<number, number[]>();
+      for (let row = 0; row < grid.rows.length; row++) {
+        const key = `${grid.id}:${row}`;
+        if (form.ambiguous.includes(key)) continue;
+        const value = form.values[grid.id]?.[row];
+        if (value === null || value === undefined) continue;
+        const rows = byValue.get(value) ?? [];
+        rows.push(row);
+        byValue.set(value, rows);
+      }
+      for (const rows of byValue.values()) {
+        if (rows.length > 1) keys.push(...rows.map((row) => `${grid.id}:${row}`));
+      }
+    }
+  }
+  return keys;
+}
+
 export function surveyIssueKinds(form: SurveyForm, template: SurveyTemplate): SurveyIssueKind[] {
   const issues = new Set<SurveyIssueKind>();
   if (form.ambiguous.length) issues.add('double');
+  if (surveyDuplicateRankKeys(form, template).length) issues.add('rank');
   if (surveyBlankKeys(form, template).length) issues.add('blank');
   if (form.faint?.length) issues.add('faint');
   if (!form.name.trim()) issues.add('unnamed');
@@ -1718,7 +1745,8 @@ export function formNeedsReview(form: SurveyForm, template: SurveyTemplate): boo
     form.flags.length > 0 ||
     form.ambiguous.length > 0 ||
     (form.faint?.length ?? 0) > 0 ||
-    surveyBlankKeys(form, template).length > 0
+    surveyBlankKeys(form, template).length > 0 ||
+    surveyDuplicateRankKeys(form, template).length > 0
   );
 }
 
